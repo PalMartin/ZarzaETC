@@ -1,15 +1,99 @@
 pub mod curve;
 
 #[cfg(test)]
-mod tests {
-    use super::*;
+pub mod tests {
 
     #[test]
-    fn it_works() {
-        let val1 = 0.0;
-        let val2 = vec![0.0, 1.0, 2.0];
-        let val3 = "test";
-        let mut my_curve = super::curve::Curve{m_oob_right: val1, m_oob_left: val1, m_units_x: val3.to_string(), m_units_y: val3.to_string(), m_curve_x: val2.clone(), m_curve_y: val2.clone()};
-        super::curve::CurveOperations::flip_2(&mut my_curve);
+    fn default_load_works() {
+        use crate::curve::{Curve, CurveOperations};
+
+        let mut my_curve = <Curve as CurveOperations>::default();
+        let _ = my_curve.load_curve("./curve_test.csv");
     }
+    #[test]
+    fn integral_works() {
+        use crate::curve::{Curve, CurveOperations};
+
+        let mut my_curve = <Curve as CurveOperations>::default();
+        let _ = my_curve.load_curve("./curve_test.csv");
+
+        my_curve.integral();
+    }
+    #[test]
+    fn dist_mean_works() {
+        use crate::curve::{Curve, CurveOperations};
+
+        let mut my_curve = <Curve as CurveOperations>::default();
+        let _ = my_curve.load_curve("./curve_test.csv");
+
+        my_curve.dist_mean();
+    }
+    #[test]
+    fn integrate_works() {
+        use crate::curve::{Curve, CurveOperations};
+
+        let mut my_curve = <Curve as CurveOperations>::default();
+        let _ = my_curve.load_curve("./curve_test.csv");
+
+        my_curve.integrate(5.0)
+    }
+    #[test]
+    fn flip_works() {
+        use crate::curve::{Curve, CurveOperations};
+
+        let mut my_curve = <Curve as CurveOperations>::default();
+        let _ = my_curve.load_curve("./curve_test.csv");
+
+        my_curve.flip()
+    }
+    #[test]
+    fn extend_left_works() {
+        use crate::curve::{Curve, CurveOperations};
+
+        let mut my_curve = <Curve as CurveOperations>::default();
+        let _ = my_curve.load_curve("./curve_test.csv");
+
+        my_curve.extend_left()
+    }
+    #[test]
+    fn extend_right_works() {
+        use crate::curve::{Curve, CurveOperations};
+
+        let mut my_curve = <Curve as CurveOperations>::default();
+        let _ = my_curve.load_curve("./curve_tests.csv");
+
+        my_curve.extend_right()
+    }
+    #[test]
+    fn multiply_by_works(){
+        use crate::curve::{Curve, CurveOperations};
+
+        let mut my_curve = <Curve as CurveOperations>::default();
+        let mut my_curve_2 = <Curve as CurveOperations>::default();
+        let _ = my_curve.load_curve("./curve_test.csv");
+        let _ = my_curve_2.load_curve("./curve_tes_2.csv");
+
+        my_curve.multiply_by(&mut my_curve_2);
+    }
+    #[test]
+    fn add_curve_works(){
+        use crate::curve::{Curve, CurveOperations};
+
+        let mut my_curve = <Curve as CurveOperations>::default();
+        let mut my_curve_2 = <Curve as CurveOperations>::default();
+        let _ = my_curve.load_curve("./curve_test.csv");
+        let _ = my_curve_2.load_curve("./curve_test_2.csv");
+
+        my_curve.add_curve(&mut my_curve_2);
+    }
+    #[test]
+    fn add_value_works(){
+        use crate::curve::{Curve, CurveOperations};
+
+        let mut my_curve = <Curve as CurveOperations>::default();
+        let _ = my_curve.load_curve("./curve_test.csv");
+
+        my_curve.add_value(5.0);
+    }
+
 }
