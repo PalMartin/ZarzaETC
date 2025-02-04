@@ -41,7 +41,7 @@ pub trait CurveOperations {
     fn from_existing(&mut self, other: &Curve, y_units: f64) -> ();
     fn clear(&mut self) -> ();
     fn debug(&self) -> ();
-    fn load_curve(&mut self, path: &str) -> Result<BTreeMap<NotNan<f64>,f64>, Box<dyn Error>>;
+    fn load_curve(&mut self, path: &str) -> Result<(), Box<dyn Error>>;
     fn save_curve(&self, path: &str) -> Result<(), Box<dyn Error>>;
 }
 
@@ -220,7 +220,8 @@ impl CurveOperations for Curve {
         for (&x, &y) in &self.curve {
             flip_crv.insert(x,y);
         }
-        self.curve = flip_crv;
+        self.curve.clear();
+        self.curve.append(&mut flip_crv);
     }
 
     fn extend_left(&mut self) -> () {
@@ -238,35 +239,43 @@ impl CurveOperations for Curve {
     }
 
     fn scale_axis_factor(&mut self, axis: CurveAxis, factor: NotNan<f64>) -> () { 
+        let mut new_pairs = BTreeMap::new();
         match axis {
             CurveAxis::XAxis => {
-                for &(mut x) in self.curve.keys() {
-                    x *= factor;
+                for (x, y) in self.curve.iter() {
+                    new_pairs.insert(*x * *factor, *y);
                 }
             }
             CurveAxis::YAxis => {
-                for y in self.curve.values_mut() {
-                    *y *= *factor;
+                for (x, y) in self.curve.iter() {
+                    new_pairs.insert(*x, *y * *factor);
                 }
             }
         }
+        self.curve.clear();
+        self.curve.append(&mut new_pairs);
+
         self.oob_left *= *factor;
         self.oob_right *= *factor;
     }
 
-    fn scale_axis_curve(&mut self, axis: CurveAxis, other: &mut Curve) -> () { 
+    fn scale_axis_curve(&mut self, axis: CurveAxis, other: &mut Curve) -> () {
+        let mut new_pairs = BTreeMap::new();
         match axis {
             CurveAxis::XAxis => {
-                for (ref mut x_1, x_2) in self.curve.keys().zip(other.curve.keys()) {
-                    *x_1 = x_2;
+                for (x, y) in self.curve.iter() {
+                    new_pairs.insert(*x * other.get_point(*x), *y);
                 }
             }
             CurveAxis::YAxis => {
-                for (ref mut y_1, y_2) in self.curve.values_mut().zip(other.curve.values_mut()) {
-                    *y_1 = y_2;
+                for (x, y) in self.curve.iter() {
+                    new_pairs.insert(*x, *y * other.get_point(*x));
                 }
             }
         }
+        self.curve.clear();
+        self.curve.append(&mut new_pairs);
+
         self.oob_left = other.oob_left;
         self.oob_right = other.oob_right;
     }
@@ -296,7 +305,10 @@ impl CurveOperations for Curve {
         self.curve.insert(x, y);
     }
 
-    fn get_point(&self, x: NotNan<f64>) -> f64 { // NOT WORKING WELL
+    fn get_point(&self, x: NotNan<f64>) -> f64 {
+        if self.curve.is_empty() {
+            panic!("The curve is empty.")
+        }
         if self.curve.contains_key(&x) {
             return *self.curve.get(&x).unwrap();
         }
@@ -340,28 +352,38 @@ impl CurveOperations for Curve {
         }
     }
 
-    fn multiply_by(&mut self, other: &mut Curve) { 
-        self.curve.append(&mut other.curve);
-        for (x, ref mut y) in self.curve.iter() {
-            *y = &(self.get_point(*x) * other.get_point(*x));
+    fn multiply_by(&mut self, other: &mut Curve) {
+        let mut new_pairs = BTreeMap::new();
+        for (x, _) in self.curve.iter() {
+            new_pairs.insert(*x, self.get_point(*x) * other.get_point(*x));
         }
+        self.curve.clear();
+        self.curve.append(&mut new_pairs);
+
         self.oob_left *= other.oob_left;
         self.oob_right *= other.oob_right;
     }
 
     fn add_curve(&mut self, other: &mut Curve) { 
-        self.curve.append(&mut other.curve);
-        for (x, ref mut y) in self.curve.iter() {
-            *y = &(self.get_point(*x) + other.get_point(*x));
+        let mut new_pairs = BTreeMap::new();
+        for (x, _) in self.curve.iter() {
+            new_pairs.insert(*x, self.get_point(*x) + other.get_point(*x));
         }
+        self.curve.clear();
+        self.curve.append(&mut new_pairs);
+
         self.oob_left += other.oob_left;
         self.oob_right += other.oob_right;
     }
 
     fn add_value(&mut self, val: f64) -> () {
-        for (x, ref mut y) in self.curve.iter() {
-            *y = &(self.get_point(*x) + val);
+        let mut new_pairs = BTreeMap::new();
+        for (x, _) in self.curve.iter() {
+            new_pairs.insert(*x, self.get_point(*x) + val);
         }
+        self.curve.clear();
+        self.curve.append(&mut new_pairs);
+
         self.oob_left += val;
         self.oob_right += val;
     }
@@ -425,24 +447,33 @@ impl CurveOperations for Curve {
         println!();
     }
 
-    fn load_curve(&mut self, path: &str) -> Result<BTreeMap<NotNan<f64>,f64>, Box<dyn Error>> {
-
-        let mut rdr = ReaderBuilder::new().has_headers(false).from_path(path)?;
+    fn load_curve(&mut self, path: &str) -> Result<(), Box<dyn Error>> {
+        let mut rdr = ReaderBuilder::new().has_headers(false).delimiter(b',').from_path(path)?;
+        let mut btree: BTreeMap<NotNan<f64>, f64> = BTreeMap::new();
         for result in rdr.records() {
             let record = result?;
 
-            let x: NotNan<f64> = record.get(0).unwrap().parse()?;
-            let y: f64 = record.get(1).unwrap().parse()?;
+            // Enserue CSV has 2 columns
+            if record.len() != 2 { 
+                return Err(format!("Invalid row format").into());
+            }
 
-            self.curve.insert(x, y);
+            //  Show an error if a value is not a valid number
+            let x: f64 = record[0].parse::<f64>().map_err(|_| format!("Invalid number"))?;
+            let y: f64 = record[1].parse::<f64>().map_err(|_| format!("Invalid number"))?;
+
+            let x_notnan = NotNan::new(x)?;//.map_err(|_| "NaN value encountered")?; -> not necessary with the previous error
+            btree.insert(x_notnan, y);
         }
-        Ok(self.curve.clone())
-    }
+        self.curve.clear();
+        self.curve = btree.clone();
+
+        Ok(())
+    }  
 
     fn save_curve(&self, path: &str) -> Result<(), Box<dyn Error>> {
-        
         let mut wtr = WriterBuilder::new().has_headers(false).from_path(path).unwrap();
-        //wtr.write_record(&["X", "Y"])?; 
+        //wtr.write_record(&["X", "Y"])?; -> uncomment if headers are necessary
         for (x, y) in self.curve.iter() {
             wtr.write_record(&[x.to_string(), y.to_string()]).unwrap();
         }
