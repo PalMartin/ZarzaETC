@@ -4,6 +4,7 @@ use csv::WriterBuilder;
 use std::collections::BTreeMap;
 use ordered_float::NotNan;
 
+#[derive(Default)]
 pub struct Curve {
     oob_right: f64,
     oob_left: f64,
@@ -17,69 +18,71 @@ pub enum CurveAxis {
     YAxis,
 }
 
-pub trait CurveOperations { 
+pub trait CurveDefault {
     fn default() -> Self;
+}
+
+pub trait CurveOperations {
     fn is_oob(&self, x: NotNan<f64>) -> bool;
     fn set_units(&mut self, axis: CurveAxis, units: String);
-    fn integral(&mut self) -> f64;
-    fn dist_mean(&mut self) -> f64;
-    fn integrate(&mut self, k: f64) -> ();
-    fn flip(&mut self) -> ();
-    fn extend_left(&mut self) -> ();
-    fn extend_right(&mut self) -> ();
-    fn scale_axis_factor(&mut self, axis: CurveAxis, factor: NotNan<f64>) -> ();
-    fn scale_axis_curve(&mut self, axis: CurveAxis, other: &mut Curve) -> ();
-    fn invert_axis(&mut self, axis: CurveAxis, factor: NotNan<f64>) -> ();
+    fn integral(&self) -> f64;
+    fn dist_mean(&self) -> f64;
+    fn integrate(&mut self, k: f64);
+    fn flip(&mut self);
+    fn extend_left(&mut self);
+    fn extend_right(&mut self);
+    fn scale_axis_factor(&mut self, axis: CurveAxis, factor: NotNan<f64>);
+    fn scale_axis_curve(&mut self, axis: CurveAxis, other: Curve);
+    fn invert_axis(&mut self, axis: CurveAxis, factor: NotNan<f64>);
     fn x_points(&self) -> Vec<NotNan<f64>>;
-    fn set(&mut self, x: NotNan<f64>, y: f64) -> ();
+    fn set(&mut self, x: NotNan<f64>, y: f64);
     fn get_point(&self, x: NotNan<f64>) -> f64;
     fn get_diff(&self, x: NotNan<f64>) -> f64;
-    fn multiply_by(&mut self, other: &mut Curve) -> ();
-    fn add_curve(&mut self, other: &mut Curve) -> ();
-    fn add_value(&mut self, val: f64) -> ();
-    fn assign(&mut self, other: &Curve) -> ();
-    fn from_existing(&mut self, other: &Curve, y_units: f64) -> ();
-    fn clear(&mut self) -> ();
-    fn debug(&self) -> ();
+    fn multiply_by(&mut self, other: Curve);
+    fn add_curve(&mut self, other: Curve);
+    fn add_value(&mut self, val: f64);
+    fn assign(&mut self, other: &Curve);
+    fn from_existing(&mut self, other: &Curve, y_units: f64);
+    fn clear(&mut self);
+    fn debug(&self);
     fn load_curve(&mut self, path: &str) -> Result<(), Box<dyn Error>>;
     fn save_curve(&self, path: &str) -> Result<(), Box<dyn Error>>;
 }
 
-impl CurveOperations for Curve {
-
-    fn default() -> Curve {
-        Curve {
-            oob_right: 0.0,
-            oob_left: 0.0,
-            units_x: String::new(),
-            units_y: String::new(),
-            curve: BTreeMap::new(),
+impl CurveDefault for Curve {
+    fn default() -> Self {
+        Self {
+            ..Default::default()
         }
     }
+}
+
+impl CurveOperations for Curve {
 
     fn is_oob(&self, x: NotNan<f64>) -> bool {
         if self.curve.is_empty() { 
             return true;
         }
-        if x < *self.curve.keys().next().unwrap() { 
+        let Some((&first_x, &_)) = self.curve.first_key_value() else { todo!() };
+        if x < first_x { 
             return true;
         }
-        if *self.curve.keys().next_back().unwrap() < x { 
+        let Some((&last_x, &_)) = self.curve.last_key_value() else { todo!() };
+        if last_x < x { 
             return true;
-        }
-        else {
+        } else {
             return false;
         }
     }
 
-    fn set_units(&mut self, axis: CurveAxis, units: String) -> () {
+    fn set_units(&mut self, axis: CurveAxis, units: String) {
         match axis {
-            CurveAxis::XAxis => self.units_x = Some(units).unwrap(),
-            CurveAxis::YAxis => self.units_y = Some(units).unwrap(),
+            CurveAxis::XAxis => self.units_x = units,
+            CurveAxis::YAxis => self.units_y = units,
         }
     }
 
-    fn integral(&mut self) -> f64 {  
+    fn integral(&self) -> f64 {  
         // Initialize variables
         let mut accum = 0.0;
         let mut err = 0.0;
@@ -91,15 +94,15 @@ impl CurveOperations for Curve {
 
         if self.curve.is_empty() {
             return 0.0;
-        }
-
-        else{
-            // Get first point and remove it for the loop
-            let (x0, y0) = self.curve.pop_first().unwrap();
+        } else {
+            // Initialize iterator
+            let mut iter = self.curve.iter();
+            // Get first point 
+            let (&x0, &y0) = iter.next().unwrap();
             let mut x_prev = x0;
             let mut y_prev = y0;
 
-            for (x, y) in self.curve.iter() {
+            for (&x, &y) in iter {
                 let dx = x - x_prev;
                 let my = 0.5 * (y + y_prev);
 
@@ -111,16 +114,14 @@ impl CurveOperations for Curve {
                 err = term_err - term_real;
                 accum = tmp;
 
-                x_prev = *x;
-                y_prev = *y;
+                x_prev = x;
+                y_prev = y;
             }
-            // Put the first point back
-            self.curve.insert(x0, y0);
             return accum;
         }
     }
 
-    fn dist_mean(&mut self) -> f64 {
+    fn dist_mean(&self) -> f64 {
         // Initialize variables
         let mut accum = 0.0;
         let mut err = 0.0;
@@ -132,15 +133,15 @@ impl CurveOperations for Curve {
 
         if self.curve.is_empty() {
             return 0.0;
-        }
-
-        else{
-            // Get first point and remove it for the loop
-            let (x0, y0) = self.curve.pop_first().unwrap();
+        } else {
+            // Initialize iterator
+            let mut iter = self.curve.iter();
+            // Get first point 
+            let (&x0, &y0) = iter.next().unwrap();
             let mut x_prev = x0;
             let mut y_prev = y0;
 
-            for (x, y) in self.curve.iter() {
+            for (&x, &y) in iter {
                 let dx = x - x_prev;
                 let my = 0.5 * (y + y_prev);
                 let x_0 = 0.5 * *((x + x_prev));
@@ -153,16 +154,14 @@ impl CurveOperations for Curve {
                 err = term_err - term_real;
                 accum = tmp;
 
-                x_prev = *x;
-                y_prev = *y;
+                x_prev = x;
+                y_prev = y;
             }
-            // Put the first point back
-            self.curve.insert(x0, y0);
             return accum/self.integral();
         }
     }
 
-    fn integrate(&mut self, k: f64) -> () { 
+    fn integrate(&mut self, k: f64) { 
         // Initialize variables
         let mut accum = 0.0;
         let mut err = 0.0;
@@ -180,36 +179,39 @@ impl CurveOperations for Curve {
             self.curve.insert(x, k);
             self.oob_right = k;
             return;
-        }
+        } 
+        // Initialize iterator
+        let mut iter = self.curve.iter();
+        // Get first point 
+        let (&x0, &y0) = iter.next().unwrap();
+        let mut x_prev = x0;
+        let mut y_prev = y0;
 
-        else {
-            // Get first point and remove it for the loop
-            let (x0, y0) = self.curve.pop_first().unwrap();
-            let mut x_prev = x0;
-            let mut y_prev = y0;
+        let mut new_pairs = BTreeMap::new();
+        let mut dx: NotNan<f64> = NotNan::new(0.0).unwrap();
 
-            let mut dx: NotNan<f64> = NotNan::new(0.0).unwrap();
+        for (&x, &y) in iter {
+            dx = x - x_prev;
 
-            for (x, y) in self.curve.iter() {
-                dx = x - x_prev;
-
-                // Kahan summation
-                let term_real = 0.5 * (y + y_prev) * *dx - err;
-                let tmp = accum + term_real;
-                let term_err = tmp-accum;
+            // Kahan summation
+            let term_real = 0.5 * (y + y_prev) * *dx - err;
+            let tmp = accum + term_real;
+            let term_err = tmp - accum;
     
-                err = term_err - term_real;
-                accum = tmp;
-    
-                x_prev = *x;
-                y_prev = *y;
-            }
-            self.curve.insert(x0, k);
-            let x_next = *self.curve.keys().last().unwrap() + dx;
-            self.curve.insert(x_next, *self.curve.values().last().unwrap() * *((*self.curve.keys().last().unwrap() - x_prev + dx)) + self.get_point(x_prev));
+            err = term_err - term_real;
+            accum = tmp;
+            
+            new_pairs.insert(x, accum);
 
-            self.oob_right = accum;
-        }
+            x_prev = x;
+            y_prev = y;
+        }            
+        new_pairs.insert(x0, k);
+        let x_next = *self.curve.keys().last().unwrap() + dx;
+        new_pairs.insert(x_next, *self.curve.values().last().unwrap() * *((*self.curve.keys().last().unwrap() - x_prev + dx)) + self.get_point(x_prev));
+        
+        self.curve = new_pairs;
+        self.oob_right = accum;
     }
 
     fn flip(&mut self) {
@@ -218,81 +220,83 @@ impl CurveOperations for Curve {
         // x & y coordinates flip
         let mut flip_crv = BTreeMap::new();
         for (&x, &y) in &self.curve {
-            flip_crv.insert(x,y);
+            let y_notnan = NotNan::new(y).expect("y should not be NaN");
+            flip_crv.insert(y_notnan, *x);
         }
-        self.curve.clear();
-        self.curve.append(&mut flip_crv);
+        self.curve = flip_crv;
     }
 
-    fn extend_left(&mut self) -> () {
+    fn extend_left(&mut self) {
         if self.curve.is_empty() {
             return;
         }
         self.oob_left = *self.curve.values().next().unwrap();
     }
 
-    fn extend_right(&mut self) -> () {
+    fn extend_right(&mut self) {
         if self.curve.is_empty() {
             return;
         }
         self.oob_right = *self.curve.values().next_back().unwrap(); 
     }
 
-    fn scale_axis_factor(&mut self, axis: CurveAxis, factor: NotNan<f64>) -> () { 
-        let mut new_pairs = BTreeMap::new();
+    fn scale_axis_factor(&mut self, axis: CurveAxis, factor: NotNan<f64>) { 
         match axis {
             CurveAxis::XAxis => {
+                let mut new_pairs = BTreeMap::new();
                 for (x, y) in self.curve.iter() {
                     new_pairs.insert(*x * *factor, *y);
                 }
+                self.curve = new_pairs;
             }
             CurveAxis::YAxis => {
-                for (x, y) in self.curve.iter() {
-                    new_pairs.insert(*x, *y * *factor);
+                for (_, y) in self.curve.iter_mut() {
+                    *y *= *factor;
                 }
-            }
+            } 
         }
-        self.curve.clear();
-        self.curve.append(&mut new_pairs);
 
         self.oob_left *= *factor;
         self.oob_right *= *factor;
     }
 
-    fn scale_axis_curve(&mut self, axis: CurveAxis, other: &mut Curve) -> () {
-        let mut new_pairs = BTreeMap::new();
+    fn scale_axis_curve(&mut self, axis: CurveAxis, other: Curve) { 
         match axis {
             CurveAxis::XAxis => {
+                let mut new_pairs = BTreeMap::new();
                 for (x, y) in self.curve.iter() {
                     new_pairs.insert(*x * other.get_point(*x), *y);
                 }
+                self.curve = new_pairs;
             }
             CurveAxis::YAxis => {
-                for (x, y) in self.curve.iter() {
-                    new_pairs.insert(*x, *y * other.get_point(*x));
+                for (x, y) in self.curve.iter_mut() {
+                    *y *= other.get_point(*x);
                 }
             }
         }
-        self.curve.clear();
-        self.curve.append(&mut new_pairs);
 
         self.oob_left = other.oob_left;
         self.oob_right = other.oob_right;
     }
 
-    fn invert_axis(&mut self, axis: CurveAxis, factor: NotNan<f64>) -> () {
+    fn invert_axis(&mut self, axis: CurveAxis, factor: NotNan<f64>) {
         match axis {
-            CurveAxis::XAxis => { 
-                for ref mut x in self.curve.keys() {
-                    *x = &(factor / *x);
+            CurveAxis::XAxis => {
+                let mut new_pairs = BTreeMap::new();
+                for (x, y) in self.curve.iter() {
+                    let new_x = NotNan::new(*factor / x.into_inner());
+                    new_pairs.insert(new_x.expect("Attempted to insert NaN"), *y);
                 }
+                self.curve = new_pairs;
             }
             CurveAxis::YAxis => {
-                for ref mut y in self.curve.values_mut() {
-                    **y *= &(*factor / **y);
+                for (_, y) in self.curve.iter_mut() {
+                    *y = *factor / *y;
                 }
             }
         }
+
         self.oob_left = 1.0 / self.oob_left;
         self.oob_right = 1.0 / self.oob_right;
     }
@@ -301,7 +305,7 @@ impl CurveOperations for Curve {
         return self.curve.clone().into_keys().collect();
     } 
 
-    fn set(&mut self, x: NotNan<f64>, y: f64) -> () {
+    fn set(&mut self, x: NotNan<f64>, y: f64) {
         self.curve.insert(x, y);
     }
 
@@ -309,20 +313,27 @@ impl CurveOperations for Curve {
         if self.curve.is_empty() {
             panic!("The curve is empty.")
         }
+        let Some((&first_x, &_)) = self.curve.first_key_value() else { todo!() };
+        if x < first_x { 
+            return self.oob_left;
+        }
+        let Some((&last_x, &_)) = self.curve.last_key_value() else { todo!() };
+        if last_x < x { 
+            return self.oob_right;
+        }
         if self.curve.contains_key(&x) {
             return *self.curve.get(&x).unwrap();
-        }
-        else {
-            let (&x0, &y0) = self.curve.range(..x).next_back().unwrap_or_else(|| panic!("No previous point found for interpolation"));
-            let (&x1, &y1) = self.curve.range(x..).next().unwrap_or_else(|| panic!("No next point found for interpolation"));
+        } else {
+            let (&x0, &y0) = self.curve.range(..x).next_back().unwrap();
+            let (&x1, &y1) = self.curve.range(x..).next().unwrap();
             let y = y0 + *((x - x0) * (y1 - y0) / (x1 - x0));
             return y;
         }
     }
 
     fn get_diff(&self, x: NotNan<f64>) -> f64 {
-        let (&prev,_) = self.curve.range(..x).next_back().unwrap_or_else(|| panic!("No previous point found for the provided value"));
-        let (&next,_) = self.curve.range(x..).next().unwrap_or_else(|| panic!("No next point found for the provided value"));
+        let (&prev,_) = self.curve.range(..x).next_back().unwrap();
+        let (&next,_) = self.curve.range(x..).next().unwrap();
         let Some((&x0,&y0)) = self.curve.get_key_value(&prev) else { panic!("Key not found") };
         let Some((&x1,&y1)) = self.curve.get_key_value(&next) else { panic!("Key not found") };
         if x1 == *self.curve.keys().next().unwrap() {
@@ -330,8 +341,7 @@ impl CurveOperations for Curve {
         }
         if x1 == *self.curve.keys().next_back().unwrap() {
             return 0.0;
-        }
-        else {
+        } else {
             // Two cases
             if x1 != x {
                 // Middle of segment
@@ -340,7 +350,7 @@ impl CurveOperations for Curve {
             }
             else {
                 // Edge of a segment
-                let (&x2, &y2) = self.curve.range(next..).nth(1).unwrap_or_else(|| panic!("No next-next point found for the provided value"));
+                let (&x2, &y2) = self.curve.range(next..).nth(1).unwrap();
                 if x2 == *self.curve.keys().next_back().unwrap() {
                     return 0.0
                 }
@@ -352,59 +362,69 @@ impl CurveOperations for Curve {
         }
     }
 
-    fn multiply_by(&mut self, other: &mut Curve) {
+    fn multiply_by(&mut self, other: Curve) {
+        // Unite the keys of both curves
+        let mut x_vals: Vec<_> = self.curve.keys().cloned().collect();
+        x_vals.extend(other.curve.keys().cloned());
+        x_vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        x_vals.dedup();
+        // Iterate on them
         let mut new_pairs = BTreeMap::new();
-        for (x, _) in self.curve.iter() {
+        for x in x_vals.iter() {
             new_pairs.insert(*x, self.get_point(*x) * other.get_point(*x));
         }
-        self.curve.clear();
-        self.curve.append(&mut new_pairs);
+        self.curve = new_pairs;
 
         self.oob_left *= other.oob_left;
         self.oob_right *= other.oob_right;
     }
 
-    fn add_curve(&mut self, other: &mut Curve) { 
+    fn add_curve(&mut self, other: Curve) { 
+        // Unite the keys of both curves
+        let mut x_vals: Vec<_> = self.curve.keys().cloned().collect();
+        x_vals.extend(other.curve.keys().cloned());
+        x_vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        x_vals.dedup();
+        // Iterate on them
         let mut new_pairs = BTreeMap::new();
-        for (x, _) in self.curve.iter() {
+        for x in x_vals.iter() {
             new_pairs.insert(*x, self.get_point(*x) + other.get_point(*x));
         }
-        self.curve.clear();
-        self.curve.append(&mut new_pairs);
+        self.curve = new_pairs;
 
         self.oob_left += other.oob_left;
         self.oob_right += other.oob_right;
     }
 
-    fn add_value(&mut self, val: f64) -> () {
+    fn add_value(&mut self, val: f64) { // !!!!!!!!!
         let mut new_pairs = BTreeMap::new();
         for (x, _) in self.curve.iter() {
             new_pairs.insert(*x, self.get_point(*x) + val);
         }
-        self.curve.clear();
-        self.curve.append(&mut new_pairs);
+        self.curve = new_pairs;
 
         self.oob_left += val;
         self.oob_right += val;
     }
 
-    fn assign(&mut self, other: &Curve) -> () { 
+    fn assign(&mut self, other: &Curve) { 
         let Some((&own_first_x, &_)) = self.curve.first_key_value() else { todo!() };
         let Some((&crv_first_x, &_)) = other.curve.first_key_value() else { todo!() };
         let Some((&own_last_x, &_)) = self.curve.last_key_value() else { todo!() };
         let Some((&crv_last_x, &_)) = other.curve.last_key_value() else { todo!() };
         // Nothing to add
-        if crv_first_x == crv_last_x {
+        if other.curve.is_empty() {
             return;
         }
         // No curve
-        if own_first_x == own_last_x {
-            return;
+        if self.curve.is_empty() {
+            self.curve = other.curve.clone();
         }
         // Assign middle part
-        for (x, ref mut y) in self.curve.iter() {
-            if other.is_oob(*x) == false {
-                *y = &other.get_point(*x);
+        let mut new_pairs = BTreeMap::new();
+        for (x, _) in self.curve.iter() {
+            if !other.is_oob(*x) {
+                new_pairs.insert(*x, other.get_point(*x));
             }
         }
         // Curve longer to the left
@@ -416,15 +436,13 @@ impl CurveOperations for Curve {
             self.oob_right = other.oob_right;
         }
         // Assign whole curve
-        let mut new_pairs = BTreeMap::new();
-        for (x, y) in self.curve.iter_mut() {
+        for (x, y) in other.curve.iter() {
             new_pairs.insert(*x, *y);
         }
-        self.curve.clear();
-        self.curve.append(&mut new_pairs)
+        self.curve = new_pairs;
     }
 
-    fn from_existing(&mut self, other: &Curve, y_units: f64) -> () {
+    fn from_existing(&mut self, other: &Curve, y_units: f64) {
         self.curve = other.curve.clone();
 
         if y_units != 1.0 {
@@ -434,13 +452,13 @@ impl CurveOperations for Curve {
         }
     }
 
-    fn clear(&mut self) -> () {
+    fn clear(&mut self) {
         self.curve.clear();
         self.oob_left = 0.0;
         self.oob_right = 0.0;
     }
 
-    fn debug(&self) -> () {
+    fn debug(&self) {
         for (x, y) in self.curve.iter() {
             print!("{} = {}, ", x, y)
         }
@@ -465,7 +483,6 @@ impl CurveOperations for Curve {
             let x_notnan = NotNan::new(x)?;//.map_err(|_| "NaN value encountered")?; -> not necessary with the previous error
             btree.insert(x_notnan, y);
         }
-        self.curve.clear();
         self.curve = btree.clone();
 
         Ok(())
