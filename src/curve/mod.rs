@@ -4,13 +4,34 @@ use csv::WriterBuilder;
 use std::collections::BTreeMap;
 use ordered_float::NotNan;
 
-#[derive(Default)]
+#[derive(Default, Clone, Debug)]
 pub struct Curve {
     oob_right: f64,
     oob_left: f64,
     units_x: String,
     units_y: String,
     curve: BTreeMap<NotNan<f64>,f64>,
+}
+
+impl Curve {
+    pub fn get_curve_mut(&mut self) -> &mut BTreeMap<NotNan<f64>, f64> {
+        &mut self.curve
+    }
+    pub fn get_oob_left_mut(&mut self) -> &mut f64 {
+        &mut self.oob_left
+    }
+    pub fn get_oob_right_mut(&mut self) -> &mut f64 {
+        &mut self.oob_right
+    }
+    pub fn get_curve(self) -> BTreeMap<NotNan<f64>, f64> {
+        self.curve
+    }
+    pub fn get_oob_left(self) -> f64 {
+        self.oob_left.clone()
+    }
+    pub fn get_oob_right(self) -> f64 {
+        self.oob_right.clone()
+    }
 }
 
 pub enum CurveAxis {
@@ -31,22 +52,24 @@ pub trait CurveOperations {
     fn flip(&mut self);
     fn extend_left(&mut self);
     fn extend_right(&mut self);
-    fn scale_axis_factor(&mut self, axis: CurveAxis, factor: NotNan<f64>);
-    fn scale_axis_curve(&mut self, axis: CurveAxis, other: Curve);
     fn invert_axis(&mut self, axis: CurveAxis, factor: NotNan<f64>);
     fn x_points(&self) -> Vec<NotNan<f64>>;
     fn set(&mut self, x: NotNan<f64>, y: f64);
     fn get_point(&self, x: NotNan<f64>) -> f64;
     fn get_diff(&self, x: NotNan<f64>) -> f64;
-    fn multiply_by(&mut self, other: Curve);
-    fn add_curve(&mut self, other: Curve);
-    fn add_value(&mut self, val: f64);
     fn assign(&mut self, other: &Curve);
     fn from_existing(&mut self, other: &Curve, y_units: f64);
     fn clear(&mut self);
     fn debug(&self);
     fn load_curve(&mut self, path: &str) -> Result<(), Box<dyn Error>>;
+    fn load_slice_dat(&mut self, path: &str, row_index: usize) -> Result<(), Box<dyn Error>>;
     fn save_curve(&self, path: &str) -> Result<(), Box<dyn Error>>;
+}
+
+pub trait BinaryCurveOperations<T> {
+    fn scale_axis(&mut self, axis: CurveAxis, by_what: T);
+    fn multiply(&mut self, by_what: T);
+    fn add(&mut self, what: T);
 }
 
 impl CurveDefault for Curve {
@@ -237,47 +260,7 @@ impl CurveOperations for Curve {
         if self.curve.is_empty() {
             return;
         }
-        self.oob_right = *self.curve.values().next_back().unwrap(); 
-    }
-
-    fn scale_axis_factor(&mut self, axis: CurveAxis, factor: NotNan<f64>) { 
-        match axis {
-            CurveAxis::XAxis => {
-                let mut new_pairs = BTreeMap::new();
-                for (x, y) in self.curve.iter() {
-                    new_pairs.insert(*x * *factor, *y);
-                }
-                self.curve = new_pairs;
-            }
-            CurveAxis::YAxis => {
-                for (_, y) in self.curve.iter_mut() {
-                    *y *= *factor;
-                }
-            } 
-        }
-
-        self.oob_left *= *factor;
-        self.oob_right *= *factor;
-    }
-
-    fn scale_axis_curve(&mut self, axis: CurveAxis, other: Curve) { 
-        match axis {
-            CurveAxis::XAxis => {
-                let mut new_pairs = BTreeMap::new();
-                for (x, y) in self.curve.iter() {
-                    new_pairs.insert(*x * other.get_point(*x), *y);
-                }
-                self.curve = new_pairs;
-            }
-            CurveAxis::YAxis => {
-                for (x, y) in self.curve.iter_mut() {
-                    *y *= other.get_point(*x);
-                }
-            }
-        }
-
-        self.oob_left = other.oob_left;
-        self.oob_right = other.oob_right;
+        self.oob_right = *self.curve.values().next_back().unwrap();
     }
 
     fn invert_axis(&mut self, axis: CurveAxis, factor: NotNan<f64>) {
@@ -362,51 +345,6 @@ impl CurveOperations for Curve {
         }
     }
 
-    fn multiply_by(&mut self, other: Curve) {
-        // Unite the keys of both curves
-        let mut x_vals: Vec<_> = self.curve.keys().cloned().collect();
-        x_vals.extend(other.curve.keys().cloned());
-        x_vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        x_vals.dedup();
-        // Iterate on them
-        let mut new_pairs = BTreeMap::new();
-        for x in x_vals.iter() {
-            new_pairs.insert(*x, self.get_point(*x) * other.get_point(*x));
-        }
-        self.curve = new_pairs;
-
-        self.oob_left *= other.oob_left;
-        self.oob_right *= other.oob_right;
-    }
-
-    fn add_curve(&mut self, other: Curve) { 
-        // Unite the keys of both curves
-        let mut x_vals: Vec<_> = self.curve.keys().cloned().collect();
-        x_vals.extend(other.curve.keys().cloned());
-        x_vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        x_vals.dedup();
-        // Iterate on them
-        let mut new_pairs = BTreeMap::new();
-        for x in x_vals.iter() {
-            new_pairs.insert(*x, self.get_point(*x) + other.get_point(*x));
-        }
-        self.curve = new_pairs;
-
-        self.oob_left += other.oob_left;
-        self.oob_right += other.oob_right;
-    }
-
-    fn add_value(&mut self, val: f64) { // !!!!!!!!!
-        let mut new_pairs = BTreeMap::new();
-        for (x, _) in self.curve.iter() {
-            new_pairs.insert(*x, self.get_point(*x) + val);
-        }
-        self.curve = new_pairs;
-
-        self.oob_left += val;
-        self.oob_right += val;
-    }
-
     fn assign(&mut self, other: &Curve) { 
         let Some((&own_first_x, &_)) = self.curve.first_key_value() else { todo!() };
         let Some((&crv_first_x, &_)) = other.curve.first_key_value() else { todo!() };
@@ -488,6 +426,28 @@ impl CurveOperations for Curve {
         Ok(())
     }  
 
+    fn load_slice_dat(&mut self, path: &str, row_index: usize) -> Result<(), Box<dyn Error>> {
+        let mut rdr = ReaderBuilder::new().has_headers(true).delimiter(b',').from_path(path)?;
+        let headers = rdr.headers()?.clone(); 
+        let mut btree: BTreeMap<NotNan<f64>, f64> = BTreeMap::new();
+        
+        for (idx, result) in rdr.records().enumerate() {
+            let record = result?;
+            if idx == row_index { 
+                for (i, header) in headers.iter().enumerate() { 
+                    let x: f64 = header.parse().map_err(|_| format!("Invalid x value: {}", header))?;
+                    let y: f64 = record[i].parse().map_err(|_| format!("Invalid y value at column {}", i))?;
+    
+                    let x_notnan = NotNan::new(x)?;
+                    btree.insert(x_notnan, y);
+                }
+                self.curve = btree;
+                return Ok(()); 
+            }
+        }
+        Err(format!("Row index {} out of bounds", row_index).into())
+    }
+
     fn save_curve(&self, path: &str) -> Result<(), Box<dyn Error>> {
         let mut wtr = WriterBuilder::new().has_headers(false).from_path(path).unwrap();
         //wtr.write_record(&["X", "Y"])?; -> uncomment if headers are necessary
@@ -498,3 +458,104 @@ impl CurveOperations for Curve {
         Ok(())
     }
 }
+
+impl BinaryCurveOperations<f64> for Curve {
+    fn scale_axis(&mut self, axis: CurveAxis, by_what: f64) {
+        match axis {
+            CurveAxis::XAxis => {
+                let mut new_pairs = BTreeMap::new();
+                for (x, y) in self.curve.iter() {
+                    new_pairs.insert(*x * by_what, *y);
+                }
+                self.curve = new_pairs;
+            }
+            CurveAxis::YAxis => {
+                for (_, y) in self.curve.iter_mut() {
+                    *y *= by_what;
+                }
+            } 
+        }
+
+        self.oob_left *= by_what;
+        self.oob_right *= by_what;
+    } 
+
+    fn multiply(&mut self, by_what: f64) {
+        let mut new_pairs = BTreeMap::new();
+        for (x, _) in self.curve.iter() {
+            new_pairs.insert(*x, self.get_point(*x) * by_what);
+        }
+        self.curve = new_pairs;
+
+        self.oob_left *= by_what;
+        self.oob_right *= by_what;
+    }
+
+    fn add(&mut self, what: f64) {
+        let mut new_pairs = BTreeMap::new();
+        for (x, _) in self.curve.iter() {
+            new_pairs.insert(*x, self.get_point(*x) + what);
+        }
+        self.curve = new_pairs;
+
+        self.oob_left += what;
+        self.oob_right += what;
+    }
+}
+
+impl BinaryCurveOperations<Curve> for Curve {
+    fn scale_axis(&mut self, axis: CurveAxis, by_what: Curve) {
+        match axis {
+            CurveAxis::XAxis => {
+                let mut new_pairs = BTreeMap::new();
+                for (x, y) in self.curve.iter() {
+                    new_pairs.insert(*x * by_what.get_point(*x), *y);
+                }
+                self.curve = new_pairs;
+            }
+            CurveAxis::YAxis => {
+                for (x, y) in self.curve.iter_mut() {
+                    *y *= by_what.get_point(*x);
+                }
+            }
+        }
+
+        self.oob_left = by_what.oob_left;
+        self.oob_right = by_what.oob_right;
+    } 
+
+    fn multiply(&mut self, by_what: Curve) {
+        // Unite the keys of both curves
+        let mut x_vals: Vec<_> = self.curve.keys().cloned().collect();
+        x_vals.extend(by_what.curve.keys().cloned());
+        x_vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        x_vals.dedup();
+        // Iterate on them
+        let mut new_pairs = BTreeMap::new();
+        for x in x_vals.iter() {
+            new_pairs.insert(*x, self.get_point(*x) * by_what.get_point(*x));
+        }
+        self.curve = new_pairs;
+
+        self.oob_left *= by_what.oob_left;
+        self.oob_right *= by_what.oob_right;
+    }
+
+    fn add(&mut self, what: Curve) {
+        // Unite the keys of both curves
+        let mut x_vals: Vec<_> = self.curve.keys().cloned().collect();
+        x_vals.extend(what.curve.keys().cloned());
+        x_vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        x_vals.dedup();
+        // Iterate on them
+        let mut new_pairs = BTreeMap::new();
+        for x in x_vals.iter() {
+            new_pairs.insert(*x, self.get_point(*x) + what.get_point(*x));
+        }
+        self.curve = new_pairs;
+
+        self.oob_left += what.oob_left;
+        self.oob_right += what.oob_right;
+    }
+}
+
