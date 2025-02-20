@@ -39,9 +39,9 @@ pub enum CurveAxis {
     YAxis,
 }
 
-pub trait CurveDefault {
-    fn default() -> Self;
-}
+//pub trait CurveDefault {
+//    fn default() -> Self;
+//}
 
 pub trait CurveOperations {
     fn is_oob(&self, x: NotNan<f64>) -> bool;
@@ -70,14 +70,6 @@ pub trait BinaryCurveOperations<T> {
     fn scale_axis(&mut self, axis: CurveAxis, by_what: T);
     fn multiply(&mut self, by_what: T);
     fn add(&mut self, what: T);
-}
-
-impl CurveDefault for Curve {
-    fn default() -> Self {
-        Self {
-            ..Default::default()
-        }
-    }
 }
 
 impl CurveOperations for Curve {
@@ -184,7 +176,7 @@ impl CurveOperations for Curve {
         }
     }
 
-    fn integrate(&mut self, k: f64) { 
+    fn integrate(&mut self, k: f64) {
         // Initialize variables
         let mut accum = 0.0;
         let mut err = 0.0;
@@ -346,10 +338,10 @@ impl CurveOperations for Curve {
     }
 
     fn assign(&mut self, other: &Curve) { 
-        let Some((&own_first_x, &_)) = self.curve.first_key_value() else { todo!() };
-        let Some((&crv_first_x, &_)) = other.curve.first_key_value() else { todo!() };
-        let Some((&own_last_x, &_)) = self.curve.last_key_value() else { todo!() };
-        let Some((&crv_last_x, &_)) = other.curve.last_key_value() else { todo!() };
+        let Some((&own_first_x, &_)) = self.curve.first_key_value() else { return; };
+        let Some((&crv_first_x, &_)) = other.curve.first_key_value() else { return; };
+        let Some((&own_last_x, &_)) = self.curve.last_key_value() else { return; };
+        let Some((&crv_last_x, &_)) = other.curve.last_key_value() else { return; };
         // Nothing to add
         if other.curve.is_empty() {
             return;
