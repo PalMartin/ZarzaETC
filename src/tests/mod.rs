@@ -1,3 +1,5 @@
+#[cfg(test)]
+
 pub mod curve_tests;
 //pub mod spectrum_tests;
 //pub mod sky_model_tests;
