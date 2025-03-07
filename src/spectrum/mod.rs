@@ -48,7 +48,7 @@ pub trait SpectrumAxisOperations {
     fn scale_axis_factor(&mut self, axis: CurveAxis, factor: f64);
     fn scale_axis_curve(&mut self, axis: CurveAxis, other: Curve);
     fn scale_axis_curve_diff(&mut self, axis: CurveAxis, other: Curve, diff: Curve);
-    fn invert_axis(&mut self, axis: CurveAxis, factor: NotNan<f64>);
+    fn invert_axis_spec(&mut self, axis: CurveAxis, factor: NotNan<f64>);
 }
 
 impl CurveOperations for Spectrum {
@@ -211,7 +211,7 @@ impl SpectrumAxisOperations for Spectrum {
         }
     }
 
-    fn invert_axis(&mut self, axis: CurveAxis, factor: NotNan<f64>) {
+    fn invert_axis_spec(&mut self, axis: CurveAxis, factor: NotNan<f64>) {
         if self.curve.get_curve_mut().is_empty() {
             return;
         } else {

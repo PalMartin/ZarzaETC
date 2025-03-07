@@ -2,7 +2,7 @@
 // curve/mod.cpp: Generic physical curve, with units
 //
 // Copyright (c) 2025 Pablo Álvarez Martín <pablo.alvmar12@gmail.com>
-// Copyright (c) 2023 Gonzalo J. Carracedo <BatchDrake@gmail.com>
+// Copyright (c) 2025 Gonzalo J. Carracedo <BatchDrake@gmail.com>
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -25,8 +25,10 @@ use csv::WriterBuilder;
 use std::collections::BTreeMap;
 use std::collections::HashSet;
 use ordered_float::NotNan;
+use serde::{Serialize, Deserialize};
+use std::mem;
 
-#[derive(Default, Clone, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct Curve {
     oob_right: f64,
     oob_left: f64,
@@ -48,10 +50,10 @@ impl Curve {
     pub fn get_curve(self) -> BTreeMap<NotNan<f64>, f64> {
         self.curve
     }
-    pub fn get_oob_left(self) -> f64 {
+    pub fn get_oob_left(&self) -> f64 {
         self.oob_left.clone()
     }
-    pub fn get_oob_right(self) -> f64 {
+    pub fn get_oob_right(&self) -> f64 {
         self.oob_right.clone()
     }
 }
@@ -69,8 +71,8 @@ pub trait CurveOperations {
     fn dist_mean(&self) -> f64;
     fn integrate(&mut self, k: f64);
     fn flip(&mut self);
-    fn extend_left(&mut self);
-    fn extend_right(&mut self);
+    fn extend_left(&mut self) -> Result<(), String>;
+    fn extend_right(&mut self) -> Result<(), String>;
     fn invert_axis(&mut self, axis: CurveAxis, factor: NotNan<f64>);
     fn x_points(&self) -> Vec<NotNan<f64>>;
     fn set(&mut self, x: NotNan<f64>, y: f64);
@@ -257,18 +259,20 @@ impl CurveOperations for Curve {
         self.curve = flip_crv;
     }
 
-    fn extend_left(&mut self) {
+    fn extend_left(&mut self) -> Result<(), String> {
         match self.bounds() {
-            None               => panic!("extend_left(): curve is empty"),
-            Some((first_x, _)) => self.oob_left = *first_x
+            None               => return Err(format!("extend_left(): curve is empty")),
+            Some((first_x, _)) => self.oob_left = *first_x,
         };
+        Ok(())
     }
 
-    fn extend_right(&mut self) {
+    fn extend_right(&mut self) -> Result<(), String> {
         match self.bounds() {
-            None              => panic!("extend_right(): curve is empty"),
+            None              => return Err(format!("extend_right(): curve is empty")),
             Some((_, last_x)) => self.oob_right = *last_x
         };
+        Ok(())
     }
 
     fn invert_axis(&mut self, axis: CurveAxis, factor: NotNan<f64>) {
@@ -288,18 +292,18 @@ impl CurveOperations for Curve {
                         "invert_axis(): NaN values in the X axis are forbidden"),
                         *y);
                 }
-
                 self.curve = new_pairs;
+
+                mem::swap(&mut self.oob_left, &mut self.oob_right);
             }
             CurveAxis::YAxis => {
                 for (_, y) in self.curve.iter_mut() {
                     *y = *factor / *y;
                 }
+                self.oob_left  = 1.0 / self.oob_left;
+                self.oob_right = 1.0 / self.oob_right;
             }
         }
-
-        self.oob_left  = 1.0 / self.oob_left;
-        self.oob_right = 1.0 / self.oob_right;
     }
 
     fn x_points(&self) -> Vec<NotNan<f64>> {
@@ -320,11 +324,18 @@ impl CurveOperations for Curve {
         } else if x > last_x {
             self.oob_right
         } else {
+            //println!("x value: {}", x);
             match self.curve.get(&x) {
                 Some(y) => *y,
-                None    => {
+                None => {
                     let (&x0, &y0) = self.curve.range(..x).next_back().unwrap();
+                    //println!("x0 value: {}", x0);
+                    //println!("y0 value: {}", y0);
                     let (&x1, &y1) = self.curve.range(x..).next().unwrap();
+                    //println!("x1 value: {}", x1);
+                    //println!("y1 value: {}", y1);
+                    if x1 == x0 {
+                    }
                     y0 + *((x - x0) * (y1 - y0) / (x1 - x0))
                 }
             }
@@ -559,8 +570,12 @@ impl BinaryCurveOperations<&Curve> for Curve {
 
     fn multiply(&mut self, by_what: &Curve) {
         let x_vals = x_union(self, by_what);
+        println!("x_vals: {:?}", x_vals);
+        
         for x in x_vals.iter() {
+            println!("x: {}", x);
             self.curve.insert(*x, self.get_point(*x) * by_what.get_point(*x));
+            println!("Multiplied values: {} * {}", self.get_point(*x), by_what.get_point(*x))
         }
 
         self.oob_left  *= by_what.oob_left;
