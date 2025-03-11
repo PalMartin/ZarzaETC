@@ -8,7 +8,7 @@ mod tests {
     #[test]
     fn test_curve_initialization() {
         let mut curve = Curve::default();
-        assert!(curve.get_curve_mut().is_empty());
+        assert!(curve.get_map_mut().is_empty());
         assert_eq!(curve.clone().get_oob_left(), 0.0);
         assert_eq!(curve.clone().get_oob_right(), 0.0);
     }

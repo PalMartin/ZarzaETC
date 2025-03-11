@@ -222,7 +222,7 @@ impl Detector {
 
         ron2 *= ron2;
 
-        return (inv_gain_2 * self.electrons_px(px) + ron2).sqrt(); // MISSION THE CONTRIBUTION OF THE SKY EMISSION TO THE NOISE
+        return (inv_gain_2 * self.electrons_px(px) + ron2).sqrt(); // MISSION THE CONTRIBUTION OF THE SKY EMISSION TO THE NOISE, ¿AND RANDOM NOISE?
     }
 
     pub fn snr(&self, px: NotNan<f64>) -> f64 {

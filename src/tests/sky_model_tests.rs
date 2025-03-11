@@ -18,9 +18,9 @@ mod tests {
     #[test]
     fn test_sky_model_initialization() {
         let mut model = SkyModel::new();
-        assert!(!model.get_sky_spectrum().get_curve().get_curve().is_empty());
-        assert!(!model.get_sky_ext().clone().get_curve().is_empty());
-        assert!(!model.get_moon_to_mag().clone().get_curve().is_empty());
+        assert!(!model.get_sky_spectrum().get_curve().get_map().is_empty());
+        assert!(!model.get_sky_ext().clone().get_map().is_empty());
+        assert!(!model.get_moon_to_mag().clone().get_map().is_empty());
         assert_eq!(*model.get_airmass(), 1.0);
         assert_eq!(*model.get_moon_fraction(), 0.0);
     }
@@ -49,7 +49,7 @@ mod tests {
         let _ = object_spectrum.load_curve("test-data/curve_test.csv").unwrap();
         let mut result_spectrum = model.make_sky_spectrum(&object_spectrum);
         //Debugging
-        println!("Sky Model: {:?}", result_spectrum.get_curve_mut().get_curve_mut());
+        println!("Sky Model: {:?}", result_spectrum.get_curve_mut().get_map_mut());
         let _ = result_spectrum.get_curve_mut().save_curve("test-data/sky_model_test.csv");
 
         assert!(!result_spectrum.x_points().is_empty());

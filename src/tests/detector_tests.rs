@@ -52,7 +52,7 @@ mod tests {
         detector.set_detector("CCD231-84-0-S77");
         detector.set_pixel_photon_flux(spectrum);
         let _ = detector.get_photon_flux_per_pixel().get_curve().save_curve("test-data/curve_constant_pixel_photon_flux.csv").unwrap();
-        assert!(!detector.get_photon_flux_per_pixel().get_curve().get_curve().is_empty())
+        assert!(!detector.get_photon_flux_per_pixel().get_curve().get_map().is_empty())
     }
 
     #[test]

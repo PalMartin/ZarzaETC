@@ -38,7 +38,7 @@ pub struct Curve {
 }
 
 impl Curve {
-    pub fn get_curve_mut(&mut self) -> &mut BTreeMap<NotNan<f64>, f64> {
+    pub fn get_map_mut(&mut self) -> &mut BTreeMap<NotNan<f64>, f64> {
         &mut self.curve
     }
     pub fn get_oob_left_mut(&mut self) -> &mut f64 {
@@ -47,7 +47,7 @@ impl Curve {
     pub fn get_oob_right_mut(&mut self) -> &mut f64 {
         &mut self.oob_right
     }
-    pub fn get_curve(self) -> BTreeMap<NotNan<f64>, f64> {
+    pub fn get_map(self) -> BTreeMap<NotNan<f64>, f64> {
         self.curve
     }
     pub fn get_oob_left(&self) -> f64 {

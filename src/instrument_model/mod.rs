@@ -385,14 +385,14 @@ impl InstrumentModel {
         disp_spectrum.scale_axis(XAxis, &w2px);
         disp_spectrum.scale_axis(XAxis, &disp);
 
-        let pixel_flux: Spectrum = Default::default();
+        let mut pixel_flux: Spectrum = Default::default();
         
         for i in 0..SPECTRAL_PIXEL_LENGTH.round() as i32 {
             let wl = px2w.get_point(i.into());
             let to_photons = wl / (PLANCK_CONSTANT * SPEED_OF_LIGHT);
 
             if !wl.is_nan() {
-                pixel_flux.get_curve().get_curve().insert(NotNan::new(i as f64).expect("x should not be NaN"), 
+                pixel_flux.get_curve_mut().get_map_mut().insert(NotNan::new(i as f64).expect("x should not be NaN"), 
                 Self::convolve_around(&disp_spectrum.get_curve(), i as f64,
                     res_el.get_point(NotNan::new(wl).expect("x should not be NaN")),
                     11) * to_photons);

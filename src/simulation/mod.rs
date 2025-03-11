@@ -194,52 +194,52 @@ impl Simulation {
             params: SimulationParams::new(),
         };
 
-        let _ = simulation.cousins_r.load_curve("src/simulation/Generic_Cousins_R.csv").unwrap();
+        let _ = simulation.cousins_r.load_curve("src/simulation/filters/Generic_Cousins_R.csv").unwrap();
         simulation.cousins_r.scale_axis(XAxis, 1e-10); // X axis was in angstrom
         simulation.cousins_r.invert_axis(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap()); // To frequency
         simulation.cousins_r_equiv_bw = simulation.cousins_r.integral();
 
-        let _ = simulation.gjc_u.load_curve("src/simulation/Generic_Johnson_UBVRIJHKL.U.csv").unwrap();
+        let _ = simulation.gjc_u.load_curve("src/simulation/filters/Generic_Johnson_UBVRIJHKL.U.csv").unwrap();
         simulation.gjc_u.scale_axis(XAxis, 1e-10); // X axis was in angstrom
         simulation.gjc_u.invert_axis(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap()); // To frequency
         simulation.gjc_u_equiv_bw = simulation.gjc_u.integral();
 
-        let _ = simulation.gjc_b.load_curve("src/simulation/Generic_Johnson_UBVRIJHKL.B.csv").unwrap();
+        let _ = simulation.gjc_b.load_curve("src/simulation/filters/Generic_Johnson_UBVRIJHKL.B.csv").unwrap();
         simulation.gjc_b.scale_axis(XAxis, 1e-10); // X axis was in angstrom
         simulation.gjc_b.invert_axis(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap()); // To frequency
         simulation.gjc_b_equiv_bw = simulation.gjc_b.integral();
 
-        let _ = simulation.gjc_v.load_curve("src/simulation/Generic_Johnson_UBVRIJHKL.V.csv").unwrap();
+        let _ = simulation.gjc_v.load_curve("src/simulation/filters/Generic_Johnson_UBVRIJHKL.V.csv").unwrap();
         simulation.gjc_v.scale_axis(XAxis, 1e-10); // X axis was in angstrom
         simulation.gjc_v.invert_axis(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap()); // To frequency
         simulation.gjc_v_equiv_bw = simulation.gjc_v.integral();
 
-        let _ = simulation.gjc_r.load_curve("src/simulation/Generic_Johnson_UBVRIJHKL.R.csv").unwrap();
+        let _ = simulation.gjc_r.load_curve("src/simulation/filters/Generic_Johnson_UBVRIJHKL.R.csv").unwrap();
         simulation.gjc_r.scale_axis(XAxis, 1e-10); // X axis was in angstrom
         simulation.gjc_r.invert_axis(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap()); // To frequency
         simulation.gjc_r_equiv_bw = simulation.cousins_r.integral();
 
-        let _ = simulation.gjc_i.load_curve("src/simulation/Generic_Johnson_UBVRIJHKL.I.csv").unwrap();
+        let _ = simulation.gjc_i.load_curve("src/simulation/filters/Generic_Johnson_UBVRIJHKL.I.csv").unwrap();
         simulation.gjc_i.scale_axis(XAxis, 1e-10); // X axis was in angstrom
         simulation.gjc_i.invert_axis(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap()); // To frequency
         simulation.gjc_i_equiv_bw = simulation.gjc_i.integral();
 
-        let _ = simulation.sdss_u.load_curve("src/simulation/SLOAN_SDSS.u.csv").unwrap();
+        let _ = simulation.sdss_u.load_curve("src/simulation/filters/SLOAN_SDSS.u.csv").unwrap();
         simulation.sdss_u.scale_axis(XAxis, 1e-10); // X axis was in angstrom
         simulation.sdss_u.invert_axis(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap()); // To frequency
         simulation.sdss_u_equiv_bw = simulation.sdss_u.integral();
 
-        let _ = simulation.sdss_g.load_curve("src/simulation/SLOAN_SDSS.g.csv").unwrap();
+        let _ = simulation.sdss_g.load_curve("src/simulation/filters/SLOAN_SDSS.g.csv").unwrap();
         simulation.sdss_g.scale_axis(XAxis, 1e-10); // X axis was in angstrom
         simulation.sdss_g.invert_axis(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap()); // To frequency
         simulation.sdss_g_equiv_bw = simulation.sdss_g.integral();
 
-        let _ = simulation.sdss_r.load_curve("src/simulation/SLOAN_SDSS.r.csv").unwrap();
+        let _ = simulation.sdss_r.load_curve("src/simulation/filters/SLOAN_SDSS.r.csv").unwrap();
         simulation.sdss_r.scale_axis(XAxis, 1e-10); // X axis was in angstrom
         simulation.sdss_r.invert_axis(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap()); // To frequency
         simulation.sdss_r_equiv_bw = simulation.sdss_r.integral();
 
-        let _ = simulation.sdss_i.load_curve("src/simulation/SLOAN_SDSS.i.csv").unwrap();
+        let _ = simulation.sdss_i.load_curve("src/simulation/filters/SLOAN_SDSS.i.csv").unwrap();
         simulation.sdss_i.scale_axis(XAxis, 1e-10); // X axis was in angstrom
         simulation.sdss_i.invert_axis(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap()); // To frequency
         simulation.sdss_i_equiv_bw = simulation.sdss_i.integral();
@@ -247,15 +247,111 @@ impl Simulation {
         return simulation;
     }
 
-    pub fn set_input_spectrum(&mut self, spec: Spectrum) {
+    pub fn set_input_user(&mut self, spec: Spectrum) {
         self.input = spec;
     }
 
+    pub fn set_input_template(&mut self, template: &str) { // CHECK UNITS
+        match template {
+            "Ell2" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/Ell2_template_norm.csv").unwrap();
+                self.input = spec;
+            }
+            "Ell5" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/Ell5_template_norm.csv").unwrap();
+                self.input = spec;
+            }
+            "Ell13" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/Ell13_template_norm.csv").unwrap();
+                self.input = spec;
+            }
+            "S0" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/S0_template_norm.csv").unwrap();
+                self.input = spec;
+            }
+            "Sa" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/Sa_template_norm.csv").unwrap();
+                self.input = spec;
+            }
+            "Sb" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/Sb_template_norm.csv").unwrap();
+                self.input = spec;
+            }
+            "Sc" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/Sc_template_norm.csv").unwrap();
+                self.input = spec;
+            }
+            "Sd" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/Sd_template_norm.csv").unwrap();
+                self.input = spec;
+            }
+            "Sdm" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/Sdm_template_norm.csv").unwrap();
+                self.input = spec;
+            }
+            "Spi4" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/Spi4_template_norm.csv").unwrap();
+                self.input = spec;
+            }
+            "LINER" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/liner_template.csv").unwrap();
+                self.input = spec;
+            }
+            "Sy1" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/seyfert1_template.csv").unwrap();
+                self.input = spec;
+            }
+            "Sy2" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/seyfert2_template.csv").unwrap();
+                self.input = spec;
+            }
+            "QSO" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/qso_template.csv").unwrap();
+                self.input = spec;
+            }
+            _ => {
+                eprintln!("Warning: Unknown template '{}'. Expected: 'Ell2', 'Ell5', 'Ell13', 'S0', 'Sa', 'Sb', 'Sc', 'Sd', 'Sdm', 'Spi4', 'LINER', 'Sy1', 'Sy2', or 'QSO'.", template);
+            }
+            // ADD THE STELLAR LIBRARIES
+        }
+    }
 
-    pub fn set_input_line(&mut self, central_wl: NotNan<f64>, int_flux: f64, fwhm: f64, line_type: &str) {
+
+    pub fn set_input_line(&mut self, central_wl: NotNan<f64>, int_flux: f64, fwhm: f64, cont_flux: f64, line_type: &str, res: &str, arm: InstrumentArm) {
         // wl in  nm anf lux in ???
         let mut line = BTreeMap::new();
-        let sigma = fwhm / 2.35;
+        let mut sigma = 0.0;
+        if res == String::from("Resolved") {
+            sigma = fwhm / STD2FWHM; // FWHM in Ángstrom​​
+        } 
+        else if res == String::from("Unresolved") {
+            let mut fwhm_ins = Curve::default();
+            match arm {
+                InstrumentArm::BlueArm => {
+                    let _ = fwhm_ins.load_curve("src/simulation/fwhm_blue.csv").unwrap(); 
+                }
+                InstrumentArm::RedArm => { // IMPLEMENT HIGH RESOLUTION DETECTOR
+                    let _ = fwhm_ins.load_curve("src/simulation/fwhm_red.csv").unwrap();
+                }
+            }
+            sigma = fwhm_ins.get_point(central_wl) / STD2FWHM;
+        } else {
+            panic!("Unexpected type format for {}. Expected 'Resolved' or 'Unresolved'.", res)
+        }
         let wl_min = central_wl - 5.0 * sigma;
         let wl_max = central_wl + 5.0 * sigma;
         let num_points = 100;
@@ -268,9 +364,9 @@ impl Simulation {
     
                     let flux = (int_flux / (sigma * (2.0 * std::f64::consts::PI).sqrt())) *
                         (-(f64::from(wl) - f64::from(central_wl)).powf(2.0) / (2.0 * sigma.powf(2.0))).exp();
-                    line.insert(wl, flux);
+                    line.insert(wl, cont_flux + flux);
                 }
-                *self.input.get_curve_mut().get_curve_mut() = line;
+                *self.input.get_curve_mut().get_map_mut() = line;
             }
             "absorption_line" => {
                 for i in 0..num_points {
@@ -279,17 +375,15 @@ impl Simulation {
     
                     let flux = -(int_flux / (sigma * (2.0 * std::f64::consts::PI).sqrt())) *
                         (-(f64::from(wl) - f64::from(central_wl)).powf(2.0) / (2.0 * sigma.powf(2.0))).exp();
-                    line.insert(wl, flux);
+                    line.insert(wl, cont_flux - flux);
                 }
-                *self.input.get_curve_mut().get_curve_mut() = line;
+                *self.input.get_curve_mut().get_map_mut() = line;
             }
             _ => {
                 eprintln!("Warning: Unknown line type '{}'. Expected: 'emission_line' or 'absorption_line'.", line_type);
             }
         }
     }
-    
-
 
     pub fn normalize_to_r_mag(&mut self, mag_r: f64) {
         let mut filtered = Spectrum::default();
@@ -376,7 +470,7 @@ impl Simulation {
         self.sky_model.set_airmass(params.airmass);
         self.sky_model.set_moon(params.moon);
 
-        if !self.sky.get_curve().get_curve().is_empty() {
+        if !self.sky.get_curve().get_map().is_empty() {
             self.sky.get_curve_mut().clear();
             self.sky = Spectrum::default();
         }
@@ -465,25 +559,42 @@ impl Simulation {
         return self.signal(px) / self.noise(px);
     }
 
-    pub fn texp_from_snr_px(&self, px: NotNan<f64>) -> f64 { //CHECK
+    pub fn texp_from_snr_px(&self, px: NotNan<f64>) -> f64 { // CHECK EXPRESSION
         let n = self.det.get_photon_flux_per_pixel().get_curve().get_point(px) * self.det.get_detector().get_pixel_side() * self.det.get_detector().get_pixel_side() * self.det.get_detector().get_q_e() / self.det.get_detector().get_gain();
         return self.noise(px) * self.params.snr / n;
     }
 
-    pub fn lim_flux(&self, px: NotNan<f64>, fwhm: f64) -> f64 { //CKECH FWHM of the line
+    pub fn lim_flux(&self, px: NotNan<f64>, fwhm: f64) -> f64 { // CHECK FWHM OF THE LINE
         let mut ron2 = self.det.read_out_noise() * self.det.read_out_noise();
-        let noise = (ron2 + self.sky.get_curve().get_point(px) * self.params.exposure).sqrt(); // ASSUMPTION: contribution of the emission line to the nose is negligible
+        let noise = (ron2 + self.sky.get_curve().get_point(px) * self.params.exposure).sqrt(); // ASSUMPTION: CONTRIBUTION OF THE EMISSION LINE TO THE NOISE IS NEGLIGIBLE
         let flux = self.params.snr * noise * fwhm / self.params.exposure; // in ADU/s
-        return flux * self.det.get_detector().get_gain() / self.det.get_detector().get_q_e() // in fotons/s per 
+        return flux * self.det.get_detector().get_gain() / self.det.get_detector().get_q_e() // in fotons/s
     }
 
-    pub fn lim_mag(&self, px: NotNan<f64>, fwhm: f64) -> f64 { // CHECK -> i calculated this from the limiting flux but im not sure
-        return -2.5 * self.lim_flux(px, fwhm).log10() - 48.6; // AB magnitude
+    pub fn lim_mag(&self, px: NotNan<f64>, fwhm: f64) -> f64 { // CHECK -> I calculated this from the limiting (line) flux
+        return -2.5 * self.lim_flux(px, fwhm).log10() - 48.6; // AB MAGNITUDE
     }
 
-    pub fn rad_vel_unc(&mut self, central_wl: NotNan<f64>, fwhm: f64, px: NotNan<f64>) -> f64 { // THIS IS ONLY FOR RESOLVED LINES, IMPLEMENT THE CASE OF UNRESOLVED LINES
-        return SPEED_OF_LIGHT * fwhm / *((central_wl * self.snr_from_texp_px(px)));
-        // Check if the equation os correct
+    pub fn rad_vel_unc(&mut self, central_wl: NotNan<f64>, fwhm: f64, px: NotNan<f64>, res: &str, arm: InstrumentArm) -> f64 {
+        let mut sigma = 0.0;
+        if res == String::from("Resolved") { 
+            sigma = fwhm / STD2FWHM; // FWHM in Ángstrom​​
+        } 
+        else if res == String::from("Unresolved") {
+            let mut fwhm_ins = Curve::default();
+            match arm {
+                InstrumentArm::BlueArm => {
+                    let _ = fwhm_ins.load_curve("src/simulation/fwhm_blue.csv").unwrap();
+                }
+                InstrumentArm::RedArm => { // IMPLEMENT HIGH RESOLUTION DETECTOR
+                    let _ = fwhm_ins.load_curve("src/simulation/fwhm_red.csv").unwrap();
+                }
+            }
+            sigma = fwhm_ins.get_point(central_wl) / STD2FWHM; 
+        } else {
+            panic!("Unexpected type format for {}. Expected 'Resolved' or 'Unresolved'.", res)
+        }
+        return SPEED_OF_LIGHT * fwhm / *((central_wl * self.snr_from_texp_px(px))); // CHECK IF THIS EXPRESSION IS REAL
     }
 }
 
