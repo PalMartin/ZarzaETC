@@ -1,12 +1,12 @@
 ccd231_84_0_s77:
   read_out_noise: 2.1
   coating: NBB
-  pixel_side: 15.0e-6
+  pixel_side: 15.0e-4 # in cm
   gain: 1.0
   q_e: 1
 ccd231_84_0_h69:
   read_out_noise: 2.1
   coating: ML15
-  pixel_side: 15.0e-6
+  pixel_side: 15.0e-4 # in cm
   gain: 1.0
   q_e: 1

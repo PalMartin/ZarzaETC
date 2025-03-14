@@ -249,78 +249,80 @@ impl Simulation {
 
     pub fn set_input_user(&mut self, spec: Spectrum) {
         self.input = spec;
+        // multiply by sky transmission
+
     }
 
-    pub fn set_input_template(&mut self, template: &str) { // CHECK UNITS
+    pub fn set_input_template(&mut self, template: &str) { // CHECK UNITS OF THE TEMPLATES
         match template {
             "Ell2" => {
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/Ell2_template_norm.csv").unwrap();
+                let _ = spec.load_curve("src/simulation/SEDs/Ell2_template_photons.csv").unwrap();
                 self.input = spec;
             }
             "Ell5" => {
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/Ell5_template_norm.csv").unwrap();
+                let _ = spec.load_curve("src/simulation/SEDs/Ell5_template_photons.csv").unwrap();
                 self.input = spec;
             }
             "Ell13" => {
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/Ell13_template_norm.csv").unwrap();
+                let _ = spec.load_curve("src/simulation/SEDs/Ell13_template_photons.csv").unwrap();
                 self.input = spec;
             }
             "S0" => {
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/S0_template_norm.csv").unwrap();
+                let _ = spec.load_curve("src/simulation/SEDs/S0_template_photons.csv").unwrap();
                 self.input = spec;
             }
             "Sa" => {
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/Sa_template_norm.csv").unwrap();
+                let _ = spec.load_curve("src/simulation/SEDs/Sa_template_photons.csv").unwrap();
                 self.input = spec;
             }
             "Sb" => {
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/Sb_template_norm.csv").unwrap();
+                let _ = spec.load_curve("src/simulation/SEDs/Sb_template_photons.csv").unwrap();
                 self.input = spec;
             }
             "Sc" => {
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/Sc_template_norm.csv").unwrap();
+                let _ = spec.load_curve("src/simulation/SEDs/Sc_template_photons.csv").unwrap();
                 self.input = spec;
             }
             "Sd" => {
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/Sd_template_norm.csv").unwrap();
+                let _ = spec.load_curve("src/simulation/SEDs/Sd_template_photons.csv").unwrap();
                 self.input = spec;
             }
             "Sdm" => {
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/Sdm_template_norm.csv").unwrap();
+                let _ = spec.load_curve("src/simulation/SEDs/Sdm_template_photons.csv").unwrap();
                 self.input = spec;
             }
             "Spi4" => {
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/Spi4_template_norm.csv").unwrap();
+                let _ = spec.load_curve("src/simulation/SEDs/Spi4_template_photons.csv").unwrap();
                 self.input = spec;
             }
             "LINER" => {
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/liner_template.csv").unwrap();
+                let _ = spec.load_curve("src/simulation/SEDs/liner_template_photons.csv").unwrap();
                 self.input = spec;
             }
             "Sy1" => {
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/seyfert1_template.csv").unwrap();
+                let _ = spec.load_curve("src/simulation/SEDs/seyfert1_template_photons.csv").unwrap();
                 self.input = spec;
             }
             "Sy2" => {
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/seyfert2_template.csv").unwrap();
+                let _ = spec.load_curve("src/simulation/SEDs/seyfert2_template_photons.csv").unwrap();
                 self.input = spec;
             }
             "QSO" => {
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/qso_template.csv").unwrap();
+                let _ = spec.load_curve("src/simulation/SEDs/qso_template_photons.csv").unwrap();
                 self.input = spec;
             }
             _ => {
@@ -332,7 +334,7 @@ impl Simulation {
 
 
     pub fn set_input_line(&mut self, central_wl: NotNan<f64>, int_flux: f64, fwhm: f64, cont_flux: f64, line_type: &str, res: &str, arm: InstrumentArm) {
-        // wl in  nm anf lux in ???
+        // wl in angstrom and input fluxes must be given in phot/s/cm2/angstrom
         let mut line = BTreeMap::new();
         let mut sigma = 0.0;
         if res == String::from("Resolved") {
@@ -407,7 +409,7 @@ impl Simulation {
         let mut filtered = Spectrum::default();
         filtered.get_curve_mut().from_existing(&self.input.get_curve(), 1.0);
         filtered.invert_axis_spec(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap());  
-        match filter {
+        match filter { 
             "J-C_U" => {  
                 let desired_sb = surface_brightness_ab2freq_radiance(mag);
                 let mean_sb = filtered.integral() / self.gjc_u_equiv_bw;
@@ -502,7 +504,7 @@ impl Simulation {
         self.det.set_pixel_photon_flux(flux);        
     }
 
-    pub fn signal(&self, px: NotNan<f64>) -> f64 {
+    pub fn signal_px(&self, px: NotNan<f64>) -> f64 {
         let spec = self.det.get_spec();
         if spec == DetectorSpec::default() {
             panic!("Detector is not set.");
@@ -511,22 +513,49 @@ impl Simulation {
         return self.det.signal_px(px);
     }
 
-    pub fn noise(&self, px: NotNan<f64>) -> f64 {
+    pub fn signal_crv(&self) -> Spectrum {
         let spec = self.det.get_spec();
         if spec == DetectorSpec::default() {
             panic!("Detector is not set.");
         }
 
-        return self.det.noise(px);
+        return self.det.signal_crv();
     }
 
-    pub fn electrons(&self, px: NotNan<f64>) -> f64 {
+    pub fn noise_px(&self, px: NotNan<f64>) -> f64 { // NO SKY CONTRIBUTION NOR RANDOM SOURCE OF NOISE IMPLEMENTED -> MAYBE IMPLEMENT IN THE RON
+        let spec = self.det.get_spec();
+        if spec == DetectorSpec::default() {
+            panic!("Detector is not set.");
+        }
+
+        return self.det.noise_px(px);
+    }
+
+    pub fn noise_crv(&self) -> Spectrum { // NO SKY CONTRIBUTION NOR RANDOM SOURCE OF NOISE IMPLEMENTED -> MAYBE IMPLEMENT IN THE RON
+        let spec = self.det.get_spec();
+        if spec == DetectorSpec::default() {
+            panic!("Detector is not set.");
+        }
+
+        return self.det.noise_crv();
+    }
+
+    pub fn electrons_px(&self, px: NotNan<f64>) -> f64 {
         let spec = self.det.get_spec();
         if spec == DetectorSpec::default() {
             panic!("Detector is not set.");
         }
 
         return self.det.electrons_px(px);
+    }
+
+    pub fn electrons_crv(&self) -> Spectrum {
+        let spec = self.det.get_spec();
+        if spec == DetectorSpec::default() {
+            panic!("Detector is not set.");
+        }
+
+        return self.det.electrons_crv();
     }
 
     pub fn read_out_noise(&self) -> f64 {
@@ -556,13 +585,30 @@ impl Simulation {
     }
 
     pub fn snr_from_texp_px(&self, px: NotNan<f64>) -> f64 {
-        return self.signal(px) / self.noise(px);
+        return self.det.snr_px(px);
+    }
+
+    pub fn snr_from_texp_crv(&mut self) -> &mut Curve {
+        return self.det.snr_crv();
     }
 
     pub fn texp_from_snr_px(&self, px: NotNan<f64>) -> f64 { // CHECK EXPRESSION
         let n = self.det.get_photon_flux_per_pixel().get_curve().get_point(px) * self.det.get_detector().get_pixel_side() * self.det.get_detector().get_pixel_side() * self.det.get_detector().get_q_e() / self.det.get_detector().get_gain();
-        return self.noise(px) * self.params.snr / n;
+        return self.noise_px(px) * self.params.snr / n;
     }
+
+    //pub fn texp_from_snr_crv(&mut self) -> &mut Curve { // CHECK EXPRESSION
+    //    let mut n_phot = self.det.get_photon_flux_per_pixel();
+    //    let mut n_phot_inv = n_phot.get_curve_mut();
+    //    n_phot_inv.multiply(self.det.get_detector().get_pixel_side() * self.det.get_detector().get_pixel_side() * self.det.get_detector().get_q_e() / self.det.get_detector().get_gain());
+    //    n_phot_inv.invert_axis(YAxis, NotNan::new(1.0).unwrap());
+    //    let mut snr = self.det.snr_crv();
+    //    let mut noise = self.det.noise_crv().get_curve_mut();
+    //    noise.multiply(&*snr);
+    //    noise.multiply(&*n_phot_inv);
+    
+    //    return noise;
+    //}
 
     pub fn lim_flux(&self, px: NotNan<f64>, fwhm: f64) -> f64 { // CHECK FWHM OF THE LINE
         let mut ron2 = self.det.read_out_noise() * self.det.read_out_noise();
@@ -595,6 +641,83 @@ impl Simulation {
             panic!("Unexpected type format for {}. Expected 'Resolved' or 'Unresolved'.", res)
         }
         return SPEED_OF_LIGHT * fwhm / *((central_wl * self.snr_from_texp_px(px))); // CHECK IF THIS EXPRESSION IS REAL
+    }
+
+    // SPATIAL FLUX DISTRIBUTION
+
+    // ¡¡¡¡¡¡ Do a correct scaling so that the grid multipy the flux at each pixel so that is the correct percentage of the galaxy total flux (integrate the spectral template?)!!!
+    // I found that i must multiply each value of the mask by the inverse of the summation of all values of the mask
+
+    fn infinite_profile(grid_size: usize) -> Vec<Vec<f64>> {
+        let mut grid = vec![vec![1.0; grid_size]; grid_size];
+        return grid;
+    }
+
+    fn uniform_profile(grid_size: usize, center: f64, radius: f64) -> Vec<Vec<f64>> {
+        let mut grid = vec![vec![0.0; grid_size]; grid_size]; 
+        for y in 0..grid_size {
+            for x in 0..grid_size {
+                let r = ((x as f64 - center).powi(2) + (y as f64 - center).powi(2)).sqrt();
+                if r <= radius {
+                    grid[y][x] = 1.0;
+                } else {
+                    grid[y][x] = 0.0;
+                }
+            }
+        }
+        return grid;
+    }
+
+    fn sersic_profile(grid_size: usize, center: f64, r_e: f64, n: f64) -> Vec<Vec<f64>> {
+        let mut grid = vec![vec![0.0; grid_size]; grid_size]; 
+        let b_n = 2.0 * n - (1.0 / 3.0) + (4.0 / (405.0 * n)) + (46.0 / (25515.0 * n.powf(2.0))); // Approximation
+        for y in 0..grid_size {
+            for x in 0..grid_size {
+                let r = ((x as f64 - center).powi(2) + (y as f64 - center).powi(2)).sqrt();
+                //grid[y][x] = i_e * ((-b_n * ((r / r_e).powf(1.0 / n) - 1.0)).exp());
+                grid[y][x] = (-b_n * ((r / r_e).powf(1.0 / n))).exp(); // NORMALIZED
+            }
+        }
+        return grid;
+    }
+
+    fn exponential_profile(grid_size: usize, center: f64, r_e: f64) -> Vec<Vec<f64>> {
+        let mut grid = vec![vec![0.0; grid_size]; grid_size]; 
+        //let b_n = 2.0 * n - (1.0 / 3.0); // Approximation for b_n only for n > 8.
+        for y in 0..grid_size {
+            for x in 0..grid_size {
+                let r = ((x as f64 - center).powf(2.0) + (y as f64 - center).powf(2.0)).sqrt();
+                //grid[y][x] = i_e * (((r / r_e).powf(1.0 / n) - 1.0).exp());
+                grid[y][x] = ((-r / r_e).exp()); // NORMALIZED
+            }
+        }
+        return grid;
+    }
+
+    fn gaussian_profile(grid_size: usize, center: f64, sigma: f64) -> Vec<Vec<f64>> {
+        let mut grid = vec![vec![0.0; grid_size]; grid_size];
+        for y in 0..grid_size {
+            for x in 0..grid_size {
+                let r = ((x as f64 - center).powf(2.0) + (y as f64 - center).powf(2.0)).sqrt();
+                //grid[y][x] = i_e * ((- r.powf(2.0) / (2.0 * sigma.powf(2.0))).exp());
+                grid[y][x] = ((- r.powf(2.0) / (2.0 * sigma.powf(2.0))).exp()); // NORMALIZED
+            }
+        }
+        return grid;
+    }
+
+    fn point_source(grid_size: usize, x0: usize, y0: usize) -> Vec<Vec<f64>> {
+        let mut grid = vec![vec![0.0; grid_size]; grid_size]; 
+        for y in 0..grid_size {
+            for x in 0..grid_size {
+                if x == x0 && y == y0 {
+                    grid[y][x] = 1.0;
+                } else {
+                    grid[y][x] = 0.0;
+                }
+            }
+        }
+        return grid;
     }
 }
 

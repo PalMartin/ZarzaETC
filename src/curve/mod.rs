@@ -573,9 +573,9 @@ impl BinaryCurveOperations<&Curve> for Curve {
         println!("x_vals: {:?}", x_vals);
         
         for x in x_vals.iter() {
-            println!("x: {}", x);
+            //println!("x: {}", x);
             self.curve.insert(*x, self.get_point(*x) * by_what.get_point(*x));
-            println!("Multiplied values: {} * {}", self.get_point(*x), by_what.get_point(*x))
+            //println!("Multiplied values: {} * {}", self.get_point(*x), by_what.get_point(*x))
         }
 
         self.oob_left  *= by_what.oob_left;

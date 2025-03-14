@@ -22,6 +22,7 @@
 use ordered_float::NotNan;
 use crate::spectrum::*;
 use crate::curve::*;
+use crate::curve::CurveAxis::YAxis;
 use std::fs::File;
 use std::io::Read;
 use serde_yaml; 
@@ -119,7 +120,7 @@ impl Detector {
         Detector {
             properties: DetectorProperties::new(),
             detector: Default::default(),
-            exposure_time: 1.0,
+            exposure_time: 3600.0,
             photon_flux_per_pixel: Default::default(),
             photons_per_pixel: Default::default(),
             electrons_per_pixel: Default::default(),
@@ -183,6 +184,11 @@ impl Detector {
         self.photons_per_pixel.from_existing(&self.photon_flux_per_pixel.get_curve(), self.exposure_time * self.detector.pixel_side * self.detector.pixel_side);
         // Compute number of electrons by means of the quantum efficiency
         self.electrons_per_pixel.from_existing(&self.photons_per_pixel.get_curve(), self.detector.q_e);
+
+        // ¡¡¡ FIX Q_E AND GAIN, THEY ARE CURVES WITH LAMBDA -> CHECH DATA, CHANGE DATATYPE AND MULTIPLY AS:
+        //self.electrons_per_pixel.from_existing(&self.photons_per_pixel.get_curve(), self.detector.q_e);
+        //self.electrons_per_pixel.scale_axis(YAxis, self.detector.q_e);
+
         // Turn this into counts
         self.signal.from_existing(&self.electrons_per_pixel.get_curve(), inv_gain);
         // Add dark electrons to the electron-per-pixel curve
@@ -212,21 +218,51 @@ impl Detector {
         return self.detector.read_out_noise / self.detector.gain;
     }
 
-    pub fn noise(&self, px: NotNan<f64>) -> f64 {
+    pub fn noise_px(&self, px: NotNan<f64>) -> f64 {
         if self.detector == DetectorSpec::default() {
             panic!("Detector is not set.");
         }
 
         let mut ron2 = self.detector.read_out_noise;
         let inv_gain_2 = 1.0 / (self.detector.gain * self.detector.gain);
-
         ron2 *= ron2;
 
-        return (inv_gain_2 * self.electrons_px(px) + ron2).sqrt(); // MISSION THE CONTRIBUTION OF THE SKY EMISSION TO THE NOISE, ¿AND RANDOM NOISE?
+        return (inv_gain_2 * self.electrons_px(px) + ron2).sqrt(); // MISSING THE CONTRIBUTION OF THE SKY EMISSION TO THE NOISE, ¿AND RANDOM NOISE?
     }
 
-    pub fn snr(&self, px: NotNan<f64>) -> f64 {
-        return self.signal.get_curve().get_point(px) / self.noise(px);
+    pub fn noise_crv(&self) -> Spectrum {
+        if self.detector == DetectorSpec::default() {
+            panic!("Detector is not set.");
+        }
+        
+        let mut ron2 = self.detector.read_out_noise;
+        let inv_gain_2 = 1.0 / (self.detector.gain * self.detector.gain);
+        ron2 *= ron2;
+
+        let mut elec = self.electrons_crv();
+        elec.multiply(inv_gain_2);
+        elec.add(ron2);
+        // MISSING THE CONTRIBUTION OF THE SKY EMISSION TO THE NOISE, ¿AND RANDOM NOISE?
+        for (_x, y) in elec.get_curve_mut().get_map_mut().iter_mut() {
+            *y = y.sqrt();  // Modify the value directly
+        }
+
+        return elec;
+    }
+
+    pub fn snr_px(&self, px: NotNan<f64>) -> f64 {
+        return self.signal.get_curve().get_point(px) / self.noise_px(px);
+    }
+
+    pub fn snr_crv(&mut self) -> &mut Curve {
+        let mut noise_curve = self.noise_crv(); // binding
+        let mut noise_inv = noise_curve.get_curve_mut();
+        noise_inv.invert_axis(YAxis, NotNan::new(1.0).unwrap());
+        
+        let mut snr = self.signal.get_curve_mut(); 
+        snr.multiply(&*noise_inv);
+    
+        return snr;
     }
 }
 
