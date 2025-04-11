@@ -22,6 +22,8 @@
 use ordered_float::NotNan;
 use crate::spectrum::*;
 use crate::curve::*;
+use crate::instrument_model::*;
+use crate::curve::CurveAxis::XAxis;
 use crate::curve::CurveAxis::YAxis;
 use std::fs::File;
 use std::io::Read;
@@ -38,7 +40,6 @@ pub struct DetectorSpec {
     pixel_side: f64,
     read_out_noise: f64,
     gain: f64,
-    q_e: f64,
 }
 impl DetectorSpec {
     // Getter functions
@@ -56,9 +57,6 @@ impl DetectorSpec {
     }
     pub fn get_gain(&self) -> &f64 {
         &self.gain
-    }
-    pub fn get_q_e(&self) -> &f64 {
-        &self.q_e
     }
 }
 
@@ -88,6 +86,7 @@ impl DetectorProperties {
 pub struct Detector {
     properties: DetectorProperties,
     detector: DetectorSpec,
+    q_e: Curve,
     exposure_time: f64,
     photon_flux_per_pixel: Spectrum,  // ph / (px m^2 s)
     photons_per_pixel: Spectrum,      // ph/px
@@ -100,6 +99,9 @@ impl Detector {
     }
     pub fn get_detector(&self) -> &DetectorSpec {
         &self.detector
+    }
+    pub fn get_q_e(&self) -> &Curve {
+        &self.q_e
     }
     pub fn get_exposure_time(&self) -> &f64 {
         &self.exposure_time
@@ -120,6 +122,7 @@ impl Detector {
         Detector {
             properties: DetectorProperties::new(),
             detector: Default::default(),
+            q_e: Default::default(),
             exposure_time: 3600.0,
             photon_flux_per_pixel: Default::default(),
             photons_per_pixel: Default::default(),
@@ -131,8 +134,10 @@ impl Detector {
         &self.properties
     }
 
+    //pub fn set_pixel_photon_flux(&mut self, flux: Spectrum, slice: usize, arm: InstrumentArm) {
     pub fn set_pixel_photon_flux(&mut self, flux: Spectrum) {
         self.photon_flux_per_pixel.assign(&flux.get_curve());
+        //self.recalculate(slice, arm);
         self.recalculate();
     }
 
@@ -140,15 +145,30 @@ impl Detector {
         self.exposure_time = t
     }
 
-    pub fn set_detector(&mut self, name: &str) {
-        if name == "CCD231-84-0-S77" {
-            self.detector = self.properties.ccd231_84_0_s77.clone();
-        } else if name == "CCD231-84-0-H69" {
-            self.detector = self.properties.ccd231_84_0_h69.clone();
-        } else {
-            panic!("Unknown detector {}; expected 'CCD231-84-0-S77' or 'CCD231-84-0-H69'.", name);
+    pub fn set_detector(&mut self, name: &str) { 
+        match name {
+            "CCD231-84-0-S77" => {
+                self.detector = self.properties.ccd231_84_0_s77.clone();
+                self.q_e.load_curve("src/detector/NBB_QE.csv").unwrap(); 
+                self.q_e.scale_axis(XAxis, 1e-9); // X axis was in nm
+
+            }
+            "CCD231-84-0-H69" => {
+                self.detector = self.properties.ccd231_84_0_h69.clone();
+                self.q_e.load_curve("src/detector/ML15_QE.csv").unwrap(); 
+                self.q_e.scale_axis(XAxis, 1e-9); // X axis was in nm
+            }
+            "CCD231-84-0-H69+DD" => {
+                self.detector = self.properties.ccd231_84_0_h69.clone();
+                self.q_e.load_curve("src/detector/ML15+DD_QE.csv").unwrap(); // For HR-R
+                self.q_e.scale_axis(XAxis, 1e-9); // X axis was in nm
+            }
+            _ => {
+                eprintln!("Unknown detector {}; expected 'CCD231-84-0-S77', 'CCD231-84-0-H69' or 'CCD231-84-0-H69+DD'.", name);
+            }
         }
-    }    
+    }  
+
 
     pub fn get_spec(&self) -> DetectorSpec {
         if self.detector == DetectorSpec::default() {
@@ -173,7 +193,8 @@ impl Detector {
         return qd;
     }
 
-    pub fn recalculate(&mut self) {  
+    //pub fn recalculate(&mut self, slice: usize, arm: InstrumentArm) {  
+    pub fn recalculate(&mut self) { 
         if self.detector == DetectorSpec::default() {
             println!("Detector is not set.");
         }
@@ -181,30 +202,33 @@ impl Detector {
         let inv_gain = 1.0 / self.detector.gain;
 
         // Compute electrons in each pixel by means of the exposure time
+        //println!("flux per pixel: {:?}", self.photon_flux_per_pixel);
         self.photons_per_pixel.from_existing(&self.photon_flux_per_pixel.get_curve(), self.exposure_time * self.detector.pixel_side * self.detector.pixel_side);
-        // Compute number of electrons by means of the quantum efficiency
-        self.electrons_per_pixel.from_existing(&self.photons_per_pixel.get_curve(), self.detector.q_e);
 
-        // ¡¡¡ FIX Q_E AND GAIN, THEY ARE CURVES WITH LAMBDA -> CHECH DATA, CHANGE DATATYPE AND MULTIPLY AS:
-        //self.electrons_per_pixel.from_existing(&self.photons_per_pixel.get_curve(), self.detector.q_e);
-        //self.electrons_per_pixel.scale_axis(YAxis, self.detector.q_e);
+        // Compute number of electrons by means of the quantum efficiency
+        self.electrons_per_pixel.from_existing(&self.photons_per_pixel.get_curve(), 1.0);
+        //self.electrons_per_pixel.get_curve_mut().multiply(&self.q_e);
 
         // Turn this into counts
         self.signal.from_existing(&self.electrons_per_pixel.get_curve(), inv_gain);
+    
         // Add dark electrons to the electron-per-pixel curve
         self.electrons_per_pixel.add(self.dark_electrons(DETECTOR_TEMPERATURE));
+        //println!();
+        //println!("ELECTRONS: {:?}", self.electrons_per_pixel);
+        println!("DARK ELECTRONS: {:?}", self.dark_electrons(DETECTOR_TEMPERATURE) )
     }
 
     pub fn signal_px(&self, px: NotNan<f64>) -> f64 {
-        return self.signal.get_curve().get_point(px);
-    }
-
-    pub fn electrons_px(&self, px: NotNan<f64>) -> f64 {
-        return self.electrons_per_pixel.get_curve().get_point(px);
+        return self.signal.get_point(px);
     }
 
     pub fn signal_crv(&self) -> Spectrum {
         return self.signal.clone();
+    }
+
+    pub fn electrons_px(&self, px: NotNan<f64>) -> f64 {
+        return self.electrons_per_pixel.get_point(px);
     }
 
     pub fn electrons_crv(&self) -> Spectrum {
@@ -222,15 +246,15 @@ impl Detector {
         if self.detector == DetectorSpec::default() {
             panic!("Detector is not set.");
         }
-
+    
         let mut ron2 = self.detector.read_out_noise;
         let inv_gain_2 = 1.0 / (self.detector.gain * self.detector.gain);
         ron2 *= ron2;
-
-        return (inv_gain_2 * self.electrons_px(px) + ron2).sqrt(); // MISSING THE CONTRIBUTION OF THE SKY EMISSION TO THE NOISE, ¿AND RANDOM NOISE?
+    
+        return (inv_gain_2 * self.electrons_px(px) + ron2).sqrt(); // MISSING THE RANDOM NOISE
     }
 
-    pub fn noise_crv(&self) -> Spectrum {
+    pub fn noise_crv(&self) -> Spectrum { 
         if self.detector == DetectorSpec::default() {
             panic!("Detector is not set.");
         }
@@ -238,29 +262,31 @@ impl Detector {
         let mut ron2 = self.detector.read_out_noise;
         let inv_gain_2 = 1.0 / (self.detector.gain * self.detector.gain);
         ron2 *= ron2;
-
+    
         let mut elec = self.electrons_crv();
         elec.multiply(inv_gain_2);
         elec.add(ron2);
-        // MISSING THE CONTRIBUTION OF THE SKY EMISSION TO THE NOISE, ¿AND RANDOM NOISE?
+        // MISSING THE RANDOM NOISE
         for (_x, y) in elec.get_curve_mut().get_map_mut().iter_mut() {
             *y = y.sqrt();  // Modify the value directly
         }
-
+    
+        println!("ron2: {:?}", ron2);
+        println!("ELECTRON PX: {:?}", self.electrons_px(NotNan::new(6.55e-7).unwrap()));
         return elec;
     }
 
-    pub fn snr_px(&self, px: NotNan<f64>) -> f64 {
-        return self.signal.get_curve().get_point(px) / self.noise_px(px);
+    pub fn snr_px(&self, px: NotNan<f64>) -> f64 { 
+        return self.signal.get_point(px) / self.noise_px(px);
     }
 
-    pub fn snr_crv(&mut self) -> &mut Curve {
+    pub fn snr_crv(&mut self) -> &mut Curve { 
         let mut noise_curve = self.noise_crv(); // binding
-        let mut noise_inv = noise_curve.get_curve_mut();
+        let mut noise_inv = noise_curve;
         noise_inv.invert_axis(YAxis, NotNan::new(1.0).unwrap());
         
         let mut snr = self.signal.get_curve_mut(); 
-        snr.multiply(&*noise_inv);
+        snr.multiply(&*noise_inv.get_curve_mut());
     
         return snr;
     }

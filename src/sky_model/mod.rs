@@ -1,5 +1,5 @@
 //
-// sky_model/mod.cpp: Sky model
+// sky_model/mod.rs: Sky model
 //
 // Copyright (c) 2025 Pablo Álvarez Martín <pablo.alvmar12@gmail.com>
 // Copyright (c) 2025 Gonzalo J. Carracedo <BatchDrake@gmail.com>
@@ -22,8 +22,8 @@
 use crate::curve;
 
 use ordered_float::NotNan;
-use crate::spectrum::Spectrum;
-use crate::curve::Curve;
+use crate::spectrum::*;
+use crate::curve::*;
 use crate::curve::CurveAxis::YAxis;
 use crate::curve::CurveAxis::XAxis;
 use curve::CurveOperations;
@@ -109,9 +109,10 @@ impl SkyModel {
         //            1.7466e-17 erg / (s cm^2 A arcsec^2), i.e.
         //             7.4309394e-10 W / (m^2 A sr)  
         let _ = self.sky_spectrum.load_curve("src/sky_model/CAHASky.csv").unwrap();
-        self.sky_spectrum.scale_axis(YAxis, 7.4309394e-10); // To SI units
-        self.sky_spectrum.scale_axis(XAxis, 1e-10); // Convert angstrom to meters
+        self.sky_spectrum.scale_axis_factor(YAxis, 7.4309394e-10); // To SI units
+        self.sky_spectrum.scale_axis_factor(XAxis, 1e-10); // Convert angstrom to meters
         let _ = self.sky_ext.load_curve("src/sky_model/CAHASkyExt.csv").unwrap();
+        self.sky_ext.scale_axis(XAxis, 1e-9); // Convert nm to meters
         let _ = self.moon_to_mag.load_curve("src/sky_model/moonBrightness.csv").unwrap();
     }
 
@@ -147,18 +148,24 @@ impl SkyModel {
         let moon = &self.moon_to_mag;
  
         spectrum.from_existing(&sky_bg.get_curve(), 1.0);
-        spectrum.scale_axis(YAxis, self.airmass);
-        spectrum.get_curve_mut().add(&object.get_curve());
+        spectrum.scale_axis_factor(YAxis, self.airmass);
+        println!("SKY SPECTRUM: {}", spectrum.get_point(NotNan::new(6.55e-7).unwrap()));
+        spectrum.add(&object.get_curve());
+        println!("OBJ SPECTRUM: {}", spectrum.get_point(NotNan::new(6.55e-7).unwrap()));
 
         let xp = spectrum.x_points();
         for p in xp {
             let ext_frac = mag2frac(sky_ext.get_point(p) * self.airmass);
+            if p == 6.55e-7 {
+                println!("EXT_FRAC {}", ext_frac);
+            }
             
             // Apply the model: I_sky = extinction(airmass) * (object + moon + background * airmass)
             spectrum.set(p, ext_frac * (spectrum.get_point(p) + surface_brightness_ab2radiance(moon.get_point(NotNan::new(self.moon_fraction).expect("x should not be NaN")), *p)));
         }
-
+        println!("EMI_EXT {:?}", spectrum.get_point(NotNan::new(6.55e-7).unwrap()));
         return spectrum;
+
     }
 }
 

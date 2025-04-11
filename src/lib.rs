@@ -6,3 +6,4 @@ pub mod instrument_model;
 pub mod detector;
 pub mod simulation;
 pub mod tests;
+pub mod data_file_manager;

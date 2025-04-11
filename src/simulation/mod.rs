@@ -38,7 +38,9 @@ pub struct SimulationParams {
     red_detector: String, 
     airmass: f64,
     moon: f64, 
-    exposure: f64,
+    dit: f64,
+    ndit: i32,
+    //exposure: f64,
     snr: f64,
     r_ab_mag: f64,
     slice: usize,
@@ -66,12 +68,21 @@ impl SimulationParams {
     pub fn get_moon_mut(&mut self) -> &mut f64 {
         &mut self.moon
     }
-    pub fn get_exposure(&self) -> &f64 {
-        &self.exposure
+    pub fn get_dit(&self) -> &f64 {
+        &self.dit
     }
-    pub fn get_exposure_mut(&mut self) -> &mut f64 {
-        &mut self.exposure
+    pub fn get_dit_mut(&mut self) -> &mut f64 {
+        &mut self.dit
     }
+    pub fn get_ndit(&self) -> &i32 {
+        &self.ndit
+    }
+    pub fn get_ndit_mut(&mut self) -> &mut i32 {
+        &mut self.ndit
+    }
+    //pub fn get_exposure_time(&self) -> &f64 {
+    //    &(self.dit * self.ndit as f64)
+    //}
     pub fn get_r_ab_mag(&self) -> &f64 {
         &self.r_ab_mag
     }
@@ -91,7 +102,9 @@ impl SimulationParams {
             red_detector: String::from("ML15"),
             airmass: 1.0,
             moon: 0.0,
-            exposure: 3600.0,
+            dit: 3600.0, 
+            ndit: 1, 
+            //exposure: 0.0,
             snr: 10.0,
             r_ab_mag: 18.0,
             slice: 20,
@@ -162,6 +175,9 @@ impl Simulation {
     }
     pub fn get_params(&self) -> &SimulationParams {
         &self.params
+    }
+    pub fn get_params_mut(&mut self) -> &mut SimulationParams {
+        &mut self.params
     }
 
     pub fn new() -> Simulation {
@@ -257,82 +273,285 @@ impl Simulation {
         match template {
             "Ell2" => {
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/Ell2_template_photons.csv").unwrap();
-                self.input = spec;
+                let _ = spec.load_curve("src/simulation/SEDs/Ell2_template.csv").unwrap(); // erg s-1 cm-2 A-1
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m   
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
             }
             "Ell5" => {
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/Ell5_template_photons.csv").unwrap();
-                self.input = spec;
+                let _ = spec.load_curve("src/simulation/SEDs/Ell5_template.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
             }
             "Ell13" => {
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/Ell13_template_photons.csv").unwrap();
-                self.input = spec;
+                let _ = spec.load_curve("src/simulation/SEDs/Ell13_template.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
             }
             "S0" => {
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/S0_template_photons.csv").unwrap();
-                self.input = spec;
+                let _ = spec.load_curve("src/simulation/SEDs/S0_template.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
             }
             "Sa" => {
+                // X axis is Angstrom
+                // Y Axis is 1e0 Erg / (s cm^2 A) per 2.7 arcsec diam fiber. I.e.,
+                //            1.7466e-1 erg / (s cm^2 A arcsec^2), i.e. // ¿COMO SALE ESTO?
+                //             7.4309394e7 W / (m^2 A sr)  
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/Sa_template_photons.csv").unwrap();
-                self.input = spec;
+                let _ = spec.load_curve("src/simulation/SEDs/Sa_template.csv").unwrap();
+                println!("OBJ SPECTRUM: {}", spec.get_point(NotNan::new(6550.0).unwrap()));
+                //let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                //let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                let _ = spec.scale_axis_factor(YAxis, 7.4309394e7); // To SI units  -> FIX THE ANGULAR UNITS: THIS IS CONSIDERING ALL THE EMISSION OF THE GALAXY IS PUNTUAL
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // Convert angstrom to meters
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1 sr-1)
             }
             "Sb" => {
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/Sb_template_photons.csv").unwrap();
-                self.input = spec;
+                let _ = spec.load_curve("src/simulation/SEDs/Sb_template.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
             }
             "Sc" => {
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/Sc_template_photons.csv").unwrap();
-                self.input = spec;
+                let _ = spec.load_curve("src/simulation/SEDs/Sc_template.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
             }
             "Sd" => {
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/Sd_template_photons.csv").unwrap();
-                self.input = spec;
+                let _ = spec.load_curve("src/simulation/SEDs/Sd_template.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
             }
             "Sdm" => {
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/Sdm_template_photons.csv").unwrap();
-                self.input = spec;
+                let _ = spec.load_curve("src/simulation/SEDs/Sdm_template.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
             }
             "Spi4" => {
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/Spi4_template_photons.csv").unwrap();
-                self.input = spec;
+                let _ = spec.load_curve("src/simulation/SEDs/Spi4_template.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
             }
             "LINER" => {
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/liner_template_photons.csv").unwrap();
-                self.input = spec;
+                let _ = spec.load_curve("src/simulation/SEDs/liner_template.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
             }
             "Sy1" => {
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/seyfert1_template_photons.csv").unwrap();
-                self.input = spec;
+                let _ = spec.load_curve("src/simulation/SEDs/seyfert1_template.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
             }
             "Sy2" => {
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/seyfert2_template_photons.csv").unwrap();
-                self.input = spec;
+                let _ = spec.load_curve("src/simulation/SEDs/seyfert2_template.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
             }
             "QSO" => {
                 let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/qso_template_photons.csv").unwrap();
-                self.input = spec;
+                let _ = spec.load_curve("src/simulation/SEDs/qso_template.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
+            }
+            "O9V" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_O9V.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
+            }
+            "BOV" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_BOV.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
+            }
+            "B3V" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_B3V.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
+            }
+            "A0V" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_A0V.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
+            }
+            "A2V" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_A2V.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
+            }
+            "A5V" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_A5V.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
+            }
+            "F0V" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_F0V.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
+            }
+            "F2V" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_F2V.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
+            }
+            "F5V" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_F5V.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
+            }
+            "G0V" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_G0V.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
+            }
+            "G2V" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_G2V.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
+            }
+            "G5V" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_G5V.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
+            }
+            "K0V" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_K0V.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
+            }
+            "K2V" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_K2V.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
+            }
+            "K5V" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_K5V.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
+            }
+            "K7V" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_K7V.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
+            }
+            "M0V" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_M0V.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
+            }
+            "M2V" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_M2V.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
+            }
+            "M4V" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_M4V.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
+            }
+            "M5V" => {
+                let mut spec = Spectrum::default();
+                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_M5V.csv").unwrap();
+                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
+                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
+                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
             }
             _ => {
-                eprintln!("Warning: Unknown template '{}'. Expected: 'Ell2', 'Ell5', 'Ell13', 'S0', 'Sa', 'Sb', 'Sc', 'Sd', 'Sdm', 'Spi4', 'LINER', 'Sy1', 'Sy2', or 'QSO'.", template);
+                eprintln!("Warning: Unknown template '{}'. Expected: 'Ell2', 'Ell5', 'Ell13', 'S0', 'Sa', 'Sb', 'Sc', 'Sd', 'Sdm', 'Spi4', 'LINER', 
+                'Sy1', 'Sy2', 'QSO' ,'O9V' ,'B0V' ,'B3V' ,'A0V' ,'A2V' ,'A5V' ,'F0V' ,'F2V' ,'F5V' ,'G0V' ,'G2V' ,'G5V' ,'K0V' ,'K2V' ,'K5V' ,'K7V' 
+                ,'M0V' ,'M2V' ,'M4V' ,'M5V'.", template);
             }
             // ADD THE STELLAR LIBRARIES
         }
+        //match spatial_distr {
+        //    "infinite" => {
+        //        let intensity_grid = infinite_profile(grid_size);
+        //    }
+        //    "uniform" => {
+        //        let intensity_grid = uniform_profile(grid_size, center, radius);
+        //    }
+        //    "sersic" => {
+        //        let intensity_grid = sersic_profile(grid_size, center, r_e, n);
+        //    }
+        //    "exponential" => {
+        //        let intensity_grid = exponential_profile(grid_size, center, r_e);
+        //    }
+        //    "gaussian" => {
+        //        let intensity_grid = gaussian_profile(grid_size, center, sigma);
+        //    }
+        //    "point" => {
+        //        let intensity_grid = point_source(grid_size, x0, y0);
+        //    }
+        //}
+        //for (y, row) in intensity_grid.iter().enumerate() {
+        //    for (x, &val) in row.iter().enumerate() {
+        //        self.input.get_point(x).multiply(val) ; // esto es lo de la distribución espacial
+        //        self.input[x][y] = 
+        //    }
+        //}
     }
 
-
+    // FIX UNITS IN SET_INPUT_LINE
     pub fn set_input_line(&mut self, central_wl: NotNan<f64>, int_flux: f64, fwhm: f64, cont_flux: f64, line_type: &str, res: &str, arm: InstrumentArm) {
         // wl in angstrom and input fluxes must be given in phot/s/cm2/angstrom
         let mut line = BTreeMap::new();
@@ -344,10 +563,10 @@ impl Simulation {
             let mut fwhm_ins = Curve::default();
             match arm {
                 InstrumentArm::BlueArm => {
-                    let _ = fwhm_ins.load_curve("src/simulation/fwhm_blue.csv").unwrap(); 
+                    fwhm_ins = self.tarsis_model.get_blue_repx()[self.params.slice].clone();
                 }
                 InstrumentArm::RedArm => { // IMPLEMENT HIGH RESOLUTION DETECTOR
-                    let _ = fwhm_ins.load_curve("src/simulation/fwhm_red.csv").unwrap();
+                    fwhm_ins = self.tarsis_model.get_red_repx()[self.params.slice].clone();
                 }
             }
             sigma = fwhm_ins.get_point(central_wl) / STD2FWHM;
@@ -356,7 +575,7 @@ impl Simulation {
         }
         let wl_min = central_wl - 5.0 * sigma;
         let wl_max = central_wl + 5.0 * sigma;
-        let num_points = 100;
+        let num_points = 1000; // The unit test dont work if there are less points
     
         match line_type {
             "emission_line" => {
@@ -364,9 +583,9 @@ impl Simulation {
                     let wl_val: f64 = *(wl_min + (i as f64) * *(((wl_max - wl_min) / (num_points as f64 - 1.0))));  
                     let wl = NotNan::new(wl_val).expect("x should not be NaN");
     
-                    let flux = (int_flux / (sigma * (2.0 * std::f64::consts::PI).sqrt())) *
-                        (-(f64::from(wl) - f64::from(central_wl)).powf(2.0) / (2.0 * sigma.powf(2.0))).exp();
+                    let flux = int_flux * (-(f64::from(wl) - f64::from(central_wl)).powf(2.0) / (2.0 * sigma.powf(2.0))).exp();
                     line.insert(wl, cont_flux + flux);
+                    line.insert(central_wl, int_flux + cont_flux); 
                 }
                 *self.input.get_curve_mut().get_map_mut() = line;
             }
@@ -375,9 +594,9 @@ impl Simulation {
                     let wl_val: f64 = *(wl_min + (i as f64) * *(((wl_max - wl_min) / (num_points as f64 - 1.0))));  
                     let wl = NotNan::new(wl_val).expect("x should not be NaN");
     
-                    let flux = -(int_flux / (sigma * (2.0 * std::f64::consts::PI).sqrt())) *
-                        (-(f64::from(wl) - f64::from(central_wl)).powf(2.0) / (2.0 * sigma.powf(2.0))).exp();
+                    let flux = -int_flux * (-(f64::from(wl) - f64::from(central_wl)).powf(2.0) / (2.0 * sigma.powf(2.0))).exp();
                     line.insert(wl, cont_flux - flux);
+                    line.insert(central_wl, int_flux + cont_flux);
                 }
                 *self.input.get_curve_mut().get_map_mut() = line;
             }
@@ -389,10 +608,10 @@ impl Simulation {
 
     pub fn normalize_to_r_mag(&mut self, mag_r: f64) {
         let mut filtered = Spectrum::default();
-        filtered.get_curve_mut().from_existing(&self.input.get_curve(), 1.0);
+        filtered.from_existing(&self.input.get_curve(), 1.0);
         filtered.invert_axis_spec(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap());
         //println!("FILTERED: {:?}", filtered.get_curve().get_curve());
-        filtered.get_curve_mut().multiply(&self.cousins_r); 
+        filtered.multiply(&self.cousins_r); 
         
         let desired_sb = surface_brightness_ab2freq_radiance(mag_r);
         //println!("desired_sb {}:", desired_sb);
@@ -407,7 +626,7 @@ impl Simulation {
     pub fn normalize_to_filter_mag(&mut self, mag: f64, filter: &str) {
         // Normalize to Johnson-Cousins U,B,V,R,I or SDSS u,g,r,i bands
         let mut filtered = Spectrum::default();
-        filtered.get_curve_mut().from_existing(&self.input.get_curve(), 1.0);
+        filtered.from_existing(&self.input.get_curve(), 1.0);
         filtered.invert_axis_spec(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap());  
         match filter { 
             "J-C_U" => {  
@@ -473,15 +692,16 @@ impl Simulation {
         self.sky_model.set_moon(params.moon);
 
         if !self.sky.get_curve().get_map().is_empty() {
-            self.sky.get_curve_mut().clear();
+            self.sky.clear();
             self.sky = Spectrum::default();
         }
 
         // Update sky spectrum
         self.sky = self.sky_model.make_sky_spectrum(&self.input);
+        //println!("INPUT: {:?}", &self.input);
 
         // Update detector config
-        self.det.set_exposure_time(params.exposure)
+        self.det.set_exposure_time(params.dit * params.ndit as f64)
     }
 
     pub fn simulate_arm(&mut self, arm: InstrumentArm) { 
@@ -499,63 +719,12 @@ impl Simulation {
 
         // Set coating
         *tarsis_prop.get_coating_mut() = self.det.get_spec().get_coating().clone();
-        self.tarsis_model.set_input(arm, self.sky.clone());
+        self.tarsis_model.set_input(arm.clone(), self.sky.clone());
+        //println!("sky: {:?}", self.sky);
         let flux = self.tarsis_model.make_pixel_photon_flux(self.params.slice);
-        self.det.set_pixel_photon_flux(flux);        
-    }
-
-    pub fn signal_px(&self, px: NotNan<f64>) -> f64 {
-        let spec = self.det.get_spec();
-        if spec == DetectorSpec::default() {
-            panic!("Detector is not set.");
-        }
-
-        return self.det.signal_px(px);
-    }
-
-    pub fn signal_crv(&self) -> Spectrum {
-        let spec = self.det.get_spec();
-        if spec == DetectorSpec::default() {
-            panic!("Detector is not set.");
-        }
-
-        return self.det.signal_crv();
-    }
-
-    pub fn noise_px(&self, px: NotNan<f64>) -> f64 { // NO SKY CONTRIBUTION NOR RANDOM SOURCE OF NOISE IMPLEMENTED -> MAYBE IMPLEMENT IN THE RON
-        let spec = self.det.get_spec();
-        if spec == DetectorSpec::default() {
-            panic!("Detector is not set.");
-        }
-
-        return self.det.noise_px(px);
-    }
-
-    pub fn noise_crv(&self) -> Spectrum { // NO SKY CONTRIBUTION NOR RANDOM SOURCE OF NOISE IMPLEMENTED -> MAYBE IMPLEMENT IN THE RON
-        let spec = self.det.get_spec();
-        if spec == DetectorSpec::default() {
-            panic!("Detector is not set.");
-        }
-
-        return self.det.noise_crv();
-    }
-
-    pub fn electrons_px(&self, px: NotNan<f64>) -> f64 {
-        let spec = self.det.get_spec();
-        if spec == DetectorSpec::default() {
-            panic!("Detector is not set.");
-        }
-
-        return self.det.electrons_px(px);
-    }
-
-    pub fn electrons_crv(&self) -> Spectrum {
-        let spec = self.det.get_spec();
-        if spec == DetectorSpec::default() {
-            panic!("Detector is not set.");
-        }
-
-        return self.det.electrons_crv();
+        //println!("flux: {:?}", flux);
+        //self.det.set_pixel_photon_flux(flux, self.params.slice, arm);        
+        self.det.set_pixel_photon_flux(flux);      
     }
 
     pub fn read_out_noise(&self) -> f64 {
@@ -584,37 +753,166 @@ impl Simulation {
         return self.tarsis_model.wavelength_to_pix_crv(arm, self.params.slice).unwrap();
     }
 
-    pub fn snr_from_texp_px(&self, px: NotNan<f64>) -> f64 {
-        return self.det.snr_px(px);
-    }
+    //pub fn signal_px(&self, px: NotNan<f64>, arm: InstrumentArm) -> f64 { // NOT CONSIDERED SKY EXTINCTION NOR INSTRUMENT TRANSMISSION
+    //    let spec = self.det.get_spec();
+    //    if spec == DetectorSpec::default() {
+    //        panic!("Detector is not set.");
+    //    }
 
-    pub fn snr_from_texp_crv(&mut self) -> &mut Curve {
-        return self.det.snr_crv();
-    }
-
-    pub fn texp_from_snr_px(&self, px: NotNan<f64>) -> f64 { // CHECK EXPRESSION
-        let n = self.det.get_photon_flux_per_pixel().get_curve().get_point(px) * self.det.get_detector().get_pixel_side() * self.det.get_detector().get_pixel_side() * self.det.get_detector().get_q_e() / self.det.get_detector().get_gain();
-        return self.noise_px(px) * self.params.snr / n;
-    }
-
-    //pub fn texp_from_snr_crv(&mut self) -> &mut Curve { // CHECK EXPRESSION
-    //    let mut n_phot = self.det.get_photon_flux_per_pixel();
-    //    let mut n_phot_inv = n_phot.get_curve_mut();
-    //    n_phot_inv.multiply(self.det.get_detector().get_pixel_side() * self.det.get_detector().get_pixel_side() * self.det.get_detector().get_q_e() / self.det.get_detector().get_gain());
-    //    n_phot_inv.invert_axis(YAxis, NotNan::new(1.0).unwrap());
-    //    let mut snr = self.det.snr_crv();
-    //    let mut noise = self.det.noise_crv().get_curve_mut();
-    //    noise.multiply(&*snr);
-    //    noise.multiply(&*n_phot_inv);
-    
-    //    return noise;
+    //    match arm {
+    //        InstrumentArm::BlueArm => {
+    //            return self.det.signal_px(px) * self.tarsis_model.get_blue_ml15().get_point(px) * (1.0 - self.sky_model.get_sky_ext().get_point(px));
+    //        }
+    //        InstrumentArm::RedArm => { 
+    //            return self.det.signal_px(px) * self.tarsis_model.get_red_ml15().get_point(px) * (1.0 - self.sky_model.get_sky_ext().get_point(px));
+    //        }
+    //    }
     //}
+
+    //pub fn signal_crv(&self, arm: InstrumentArm) -> Spectrum {  // NOT CONSIDERED SKY EXTINCTION NOR INSTRUMENT TRANSMISSION
+    //    let spec = self.det.get_spec();
+    //    if spec == DetectorSpec::default() {
+    //        panic!("Detector is not set.");
+    //    }
+
+    //    let mut signal = self.det.signal_crv();
+    //    match arm {
+    //        InstrumentArm::BlueArm => {
+    //            signal.multiply(self.tarsis_model.get_blue_ml15());
+    //        }
+    //        InstrumentArm::RedArm => {
+    //            signal.multiply(self.tarsis_model.get_red_ml15());
+    //       }
+    //    }
+    //    let mut sky_ext = self.sky_model.get_sky_ext().clone();
+    //    sky_ext.multiply(-1.0);
+    //    sky_ext.add(1.0);
+    //    signal.multiply(&sky_ext);
+
+    //    return signal;
+    //}
+
+    //pub fn noise_px(&self, px: NotNan<f64>, arm: InstrumentArm) -> f64 { // NO RANDOM SOURCE OF NOISE IMPLEMENTED -> CHECK CalculationWorker.cpp
+    //    let spec = self.det.get_spec();
+    //    if spec == DetectorSpec::default() {
+    //        panic!("Detector is not set.");
+    //    }
+
+    //    let mut ron2 = self.det.get_detector().get_read_out_noise() * self.det.get_detector().get_read_out_noise();
+    //    let inv_gain = 1.0 / self.det.get_detector().get_gain();
+    //    let inv_gain_2 = 1.0 / (self.det.get_detector().get_gain() * self.det.get_detector().get_gain());
+         
+    //    let mut sky = self.sky_model.get_sky_spectrum().get_point(px);
+    //    sky = sky * self.params.dit * self.params.ndit as f64 * self.det.get_detector().get_pixel_side() * self.det.get_detector().get_pixel_side();
+    //    match arm {
+    //        InstrumentArm::RedArm => {
+    //            sky = sky * self.tarsis_model.get_red_repx()[self.params.slice].get_point(px);
+    //        }
+    //        InstrumentArm::BlueArm => {
+    //            sky = sky * self.tarsis_model.get_blue_repx()[self.params.slice].get_point(px);
+    //        }
+    //    }
+    //    sky *= self.det.get_q_e().get_point(px);
+    //    sky *= inv_gain;
+
+    //    return (inv_gain_2 * self.det.electrons_px(px) + sky +  ron2).sqrt();
+    //}
+
+    //pub fn noise_crv(&self, arm: InstrumentArm) -> Spectrum { // NO RANDOM SOURCE OF NOISE IMPLEMENTED -> CHECK CalculationWorker.cpp
+    //    let spec = self.det.get_spec();
+    //    if spec == DetectorSpec::default() {
+    //        panic!("Detector is not set.");
+    //    }
+
+    //    let spec = self.det.get_spec();
+    //    if spec == DetectorSpec::default() {
+    //        panic!("Detector is not set.");
+    //    }
+
+    //    let mut ron2 = self.det.get_detector().get_read_out_noise() * self.det.get_detector().get_read_out_noise();
+    //    let inv_gain = 1.0 / self.det.get_detector().get_gain();
+    //    let inv_gain_2 = 1.0 / (self.det.get_detector().get_gain() * self.det.get_detector().get_gain());
+         
+    //    let mut sky = self.sky_model.get_sky_spectrum().get_curve();
+    //    sky.multiply(self.params.dit * self.params.ndit as f64 * self.det.get_detector().get_pixel_side() * self.det.get_detector().get_pixel_side());
+    //    match arm {
+    //        InstrumentArm::RedArm => {
+    //            sky.multiply(&self.tarsis_model.get_red_repx()[self.params.slice]);
+    //        }
+    //        InstrumentArm::BlueArm => {
+    //            sky.multiply(&self.tarsis_model.get_blue_repx()[self.params.slice]);
+    //        }
+    //    }
+    //    sky.multiply(self.det.get_q_e());
+    //    sky.multiply(inv_gain);
+
+    //    let mut noise_spec = Spectrum::default();
+    //    noise_spec = self.det.electrons_crv();
+    //    noise_spec.get_curve_mut().multiply(inv_gain_2);
+    //    noise_spec.get_curve_mut().add(&sky);
+    //    noise_spec.get_curve_mut().add(ron2);
+    //    for (_x, y) in noise_spec.get_curve_mut().get_map_mut().iter_mut() {
+    //        *y = y.sqrt(); 
+    //    }
+
+    //    return noise_spec;
+    //}
+
+    //pub fn electrons_px(&self, px: NotNan<f64>) -> f64 {
+    //    let spec = self.det.get_spec();
+    //    if spec == DetectorSpec::default() {
+    //        panic!("Detector is not set.");
+    //    }
+
+    //    return self.det.electrons_px(px);
+    //}
+
+    //pub fn electrons_crv(&self) -> Spectrum {
+    //    let spec = self.det.get_spec();
+    //    if spec == DetectorSpec::default() {
+    //        panic!("Detector is not set.");
+    //    }
+
+    //   return self.det.electrons_crv();
+    //}
+
+    //pub fn snr_from_texp_px(&self, px: NotNan<f64>, arm: InstrumentArm) -> f64 {
+    //    return self.signal_px(px, arm.clone()) / self.noise_px(px, arm);
+    //}
+
+    //pub fn snr_from_texp_crv(&mut self, arm: InstrumentArm) -> Curve {
+    //    let mut noise_curve = self.noise_crv(arm.clone()); 
+    //    let mut noise_inv = noise_curve.get_curve_mut();
+    //    noise_inv.invert_axis(YAxis, NotNan::new(1.0).unwrap());
+        
+    //    let mut signal_curve = self.signal_crv(arm); 
+    //    let mut snr = signal_curve.get_curve_mut();
+    //    snr.multiply(&*noise_inv);
+    //    return snr.clone();
+    //}
+
+    pub fn texp_from_snr_px(&self, px: NotNan<f64>, arm: InstrumentArm) -> f64 { // CHECK EXPRESSION
+        let n = self.det.get_photon_flux_per_pixel().get_point(px) * self.det.get_detector().get_pixel_side() * self.det.get_detector().get_pixel_side() * self.det.get_q_e().get_point(px) / self.det.get_detector().get_gain();
+        return self.det.noise_px(px) * self.params.snr / n;
+    }
+
+    pub fn texp_from_snr_crv(&mut self, arm: InstrumentArm) -> f64 { // CHECK EXPRESSION
+        let mut texp_crv = BTreeMap::new();
+        let mut n = 0.0;
+        let mut texp_px = 0.0;
+        for (x, y) in self.det.noise_crv().get_curve().get_map().iter() {
+            n = self.det.get_photon_flux_per_pixel().get_point(*x) * self.det.get_detector().get_pixel_side() * self.det.get_detector().get_pixel_side() * self.det.get_q_e().get_point(*x) / self.det.get_detector().get_gain();
+            texp_crv.insert(*x, *y * self.params.snr / n);
+        }
+        let texp = texp_crv.values().cloned().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(0.0);
+        return texp; 
+    }
 
     pub fn lim_flux(&self, px: NotNan<f64>, fwhm: f64) -> f64 { // CHECK FWHM OF THE LINE
         let mut ron2 = self.det.read_out_noise() * self.det.read_out_noise();
-        let noise = (ron2 + self.sky.get_curve().get_point(px) * self.params.exposure).sqrt(); // ASSUMPTION: CONTRIBUTION OF THE EMISSION LINE TO THE NOISE IS NEGLIGIBLE
-        let flux = self.params.snr * noise * fwhm / self.params.exposure; // in ADU/s
-        return flux * self.det.get_detector().get_gain() / self.det.get_detector().get_q_e() // in fotons/s
+        let noise = (ron2 + self.sky.get_point(px) * (self.params.dit * self.params.ndit as f64)).sqrt(); // ASSUMPTION: CONTRIBUTION OF THE EMISSION LINE TO THE NOISE IS NEGLIGIBLE
+        let flux = self.params.snr * noise * fwhm / (self.params.dit * self.params.ndit as f64); // in ADU/s
+        return flux * self.det.get_detector().get_gain() / self.det.get_q_e().get_point(px) // in fotons/s
     }
 
     pub fn lim_mag(&self, px: NotNan<f64>, fwhm: f64) -> f64 { // CHECK -> I calculated this from the limiting (line) flux
@@ -624,23 +922,23 @@ impl Simulation {
     pub fn rad_vel_unc(&mut self, central_wl: NotNan<f64>, fwhm: f64, px: NotNan<f64>, res: &str, arm: InstrumentArm) -> f64 {
         let mut sigma = 0.0;
         if res == String::from("Resolved") { 
-            sigma = fwhm / STD2FWHM; // FWHM in Ángstrom​​
+            sigma = STD2FWHM / fwhm; // FWHM in Ángstrom​​
         } 
         else if res == String::from("Unresolved") {
             let mut fwhm_ins = Curve::default();
             match arm {
-                InstrumentArm::BlueArm => {
-                    let _ = fwhm_ins.load_curve("src/simulation/fwhm_blue.csv").unwrap();
+                InstrumentArm::RedArm => {
+                    fwhm_ins = self.tarsis_model.get_red_repx()[self.params.slice].clone();
                 }
-                InstrumentArm::RedArm => { // IMPLEMENT HIGH RESOLUTION DETECTOR
-                    let _ = fwhm_ins.load_curve("src/simulation/fwhm_red.csv").unwrap();
+                InstrumentArm::BlueArm => {
+                    fwhm_ins = self.tarsis_model.get_blue_repx()[self.params.slice].clone();
                 }
             }
-            sigma = fwhm_ins.get_point(central_wl) / STD2FWHM; 
+            sigma = STD2FWHM / fwhm_ins.get_point(central_wl); 
         } else {
             panic!("Unexpected type format for {}. Expected 'Resolved' or 'Unresolved'.", res)
         }
-        return SPEED_OF_LIGHT * fwhm / *((central_wl * self.snr_from_texp_px(px))); // CHECK IF THIS EXPRESSION IS REAL
+        return SPEED_OF_LIGHT * fwhm / *((central_wl * self.det.snr_px(px))); // CHECK IF THIS EXPRESSION IS OK 
     }
 
     // SPATIAL FLUX DISTRIBUTION
@@ -688,7 +986,7 @@ impl Simulation {
             for x in 0..grid_size {
                 let r = ((x as f64 - center).powf(2.0) + (y as f64 - center).powf(2.0)).sqrt();
                 //grid[y][x] = i_e * (((r / r_e).powf(1.0 / n) - 1.0).exp());
-                grid[y][x] = ((-r / r_e).exp()); // NORMALIZED
+                grid[y][x] = (-r / r_e).exp(); // NORMALIZED
             }
         }
         return grid;
@@ -700,7 +998,7 @@ impl Simulation {
             for x in 0..grid_size {
                 let r = ((x as f64 - center).powf(2.0) + (y as f64 - center).powf(2.0)).sqrt();
                 //grid[y][x] = i_e * ((- r.powf(2.0) / (2.0 * sigma.powf(2.0))).exp());
-                grid[y][x] = ((- r.powf(2.0) / (2.0 * sigma.powf(2.0))).exp()); // NORMALIZED
+                grid[y][x] = - r.powf(2.0) / (2.0 * sigma.powf(2.0)).exp(); // NORMALIZED
             }
         }
         return grid;

@@ -47,7 +47,7 @@ impl Spectrum {
 pub trait SpectrumAxisOperations {
     fn scale_axis_factor(&mut self, axis: CurveAxis, factor: f64);
     fn scale_axis_curve(&mut self, axis: CurveAxis, other: Curve);
-    fn scale_axis_curve_diff(&mut self, axis: CurveAxis, other: Curve, diff: Curve);
+    fn scale_axis_curve_diff(&mut self, axis: CurveAxis, other: &Curve, diff: &Curve);
     fn invert_axis_spec(&mut self, axis: CurveAxis, factor: NotNan<f64>);
 }
 
@@ -164,7 +164,8 @@ impl SpectrumAxisOperations for Spectrum {
             CurveAxis::XAxis => {
                 let mut new_pairs = BTreeMap::new();
                 for (x, y) in self.curve.get_map_mut().iter_mut() {
-                    let diff = other.get_diff(*x).abs();
+                    let diff = other.clone().get_diff(*x).abs();
+                    //println!("DIFF: {}", diff);
                     if diff != 0.0 {
                         let x_notnan = NotNan::new(other.get_point(*x)).expect("x should not be NaN");
                         new_pairs.insert(x_notnan, *y / diff);
@@ -185,21 +186,22 @@ impl SpectrumAxisOperations for Spectrum {
             CurveAxis::YAxis => self.curve.multiply(&other)
         }
     }
-    fn scale_axis_curve_diff(&mut self, axis: CurveAxis, mut other: Curve, diff: Curve) {
+
+    fn scale_axis_curve_diff(&mut self, axis: CurveAxis, other: &Curve, diff: &Curve) {
         match axis {
             CurveAxis::XAxis => {
                 let mut new_pairs = BTreeMap::new();
                 for (x, y) in self.curve.get_map_mut().iter() {
-                    let dfdx = diff.get_diff(*x).abs();
+                    let dfdx = diff.get_point(*x).abs();
                     if dfdx != 0.0 {
                         let x_notnan = NotNan::new(other.get_point(*x)).expect("x should not be NaN");
-                        new_pairs.insert(x_notnan, *y / dfdx);
+                        new_pairs.insert(x_notnan, y / dfdx);
                     }
                 }
                 *self.curve.get_map_mut() = new_pairs;
 
-                let Some((&_, &crv_first_y)) = other.get_map_mut().first_key_value() else { todo!() };
-                let Some((&_, &crv_last_y)) = other.get_map_mut().last_key_value() else { todo!() };
+                let Some((&_, &crv_first_y)) = other.clone().get_map().first_key_value() else { todo!() };
+                let Some((&_, &crv_last_y)) = other.clone().get_map().last_key_value() else { todo!() };
                 if *self.curve.get_oob_left_mut() != 0.0 {
                     *self.curve.get_oob_left_mut() /= diff.get_point(NotNan::new(crv_first_y).expect("Attempted to insert NaN")).abs()
                 }
@@ -207,7 +209,7 @@ impl SpectrumAxisOperations for Spectrum {
                     *self.curve.get_oob_right_mut() /= diff.get_point(NotNan::new(crv_last_y).expect("Attempted to insert NaN")).abs()
                 }
             }
-            CurveAxis::YAxis => self.curve.multiply(&other)
+            CurveAxis::YAxis => self.curve.multiply(other)
         }
     }
 

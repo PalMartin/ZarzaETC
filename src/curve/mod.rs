@@ -238,8 +238,9 @@ impl CurveOperations for Curve {
                 y_prev = y;
             }            
             new_pairs.insert(x0, k);
-            let x_next = *self.curve.keys().last().unwrap() + dx;
-            new_pairs.insert(x_next, *self.curve.values().last().unwrap() * *((*self.curve.keys().last().unwrap() - x_prev + dx)) + self.get_point(x_prev));
+            //let x_next = *self.curve.keys().last().unwrap() + dx;
+            //new_pairs.insert(x_next, *self.curve.values().last().unwrap() * *((*self.curve.keys().last().unwrap() - x_prev + dx)) + self.get_point(x_prev));
+            // THIS LAST PART IS WHAT MAKES THE INTEGRATION OF W2PX WEIRD IN INSTRUMENT_MODEL
             
             self.curve = new_pairs;
             self.oob_right = accum;
@@ -257,12 +258,15 @@ impl CurveOperations for Curve {
             flip_crv.insert(y_notnan, *x);
         }
         self.curve = flip_crv;
+
+        self.oob_left = *self.curve.first_key_value().unwrap().1;
+        self.oob_right = *self.curve.last_key_value().unwrap().1;
     }
 
     fn extend_left(&mut self) -> Result<(), String> {
         match self.bounds() {
             None               => return Err(format!("extend_left(): curve is empty")),
-            Some((first_x, _)) => self.oob_left = *first_x,
+            Some((first_x, _)) => self.oob_left = *self.curve.first_key_value().unwrap().1,
         };
         Ok(())
     }
@@ -270,7 +274,7 @@ impl CurveOperations for Curve {
     fn extend_right(&mut self) -> Result<(), String> {
         match self.bounds() {
             None              => return Err(format!("extend_right(): curve is empty")),
-            Some((_, last_x)) => self.oob_right = *last_x
+            Some((_, last_x)) => self.oob_right = *self.curve.last_key_value().unwrap().1,
         };
         Ok(())
     }
@@ -353,25 +357,35 @@ impl CurveOperations for Curve {
         };
 
         if x < first_x || x >= last_x {
-            0.0
+            return 0.0;
         } else {
             // These are guaranteed to exist
             let mut left   = self.curve.range(..x);
             let mut right  = self.curve.range(x..);
 
-            let (&x0, &y0) = left.next_back().unwrap();
-            let (&x1, &y1) = right.next().unwrap();
+            let Some((&x0, &y0)) = left.next_back() else {
+                return 0.0; // No valid left point
+            };
+            let Some((&x1, &y1)) = right.next() else {
+                return 0.0; // No valid right point
+            };
 
             if x != x1 || x1 == last_x {
-                // Middle of the segment, or edge of the last segment
-                (y1 - y0) / *((x1 - x0))
+                if x1 != x0 {
+                    // Middle of the segment, or edge of the last segment
+                    return (y1 - y0) / *((x1 - x0));
+                }
             } else {
                 // Edge of a segment. This is also guaranteed to exist, as
                 // the previous condition is also applied for the last segment.
-                let (&x2, &y2) = right.next().unwrap();
-                (y2 - y0) / *((x2 - x0))
+                if let Some((&x2, &y2)) = right.next() {
+                    if x2 != x0 {
+                        return (y2 - y0) / *((x2 - x0));
+                    }
+                }
             }
         }
+        return 0.0; // Fallback return value to avoid panic
     }
 
     // TODO: Check units!!!
@@ -439,9 +453,12 @@ impl CurveOperations for Curve {
     }
 
     fn debug(&self) {
-        for (x, y) in self.curve.iter() {
-            print!("{} = {}, ", x, y)
-        }
+        //for (x, y) in self.curve.iter() {
+        //    print!("{} = {}, ", x, y)
+        //}
+        //println!();
+        println!("Min X value: {:?}; Max X value: {:?}", self.curve.first_key_value().map(|(k, _)| k), self.curve.last_key_value().map(|(k, _)| k));
+        println!("Left bound: {}; Right bound: {}", self.oob_left, self.oob_right);
         println!();
     }
 
@@ -510,8 +527,8 @@ impl BinaryCurveOperations<f64> for Curve {
                     new_pairs.insert(*x * by_what, *y);
                 }
                 self.curve = new_pairs;
-                self.oob_left  *= by_what;
-                self.oob_right *= by_what;
+                //self.oob_left  *= by_what;
+                //self.oob_right *= by_what;
             }
             CurveAxis::YAxis => self.multiply(by_what),
         }
@@ -557,8 +574,8 @@ impl BinaryCurveOperations<&Curve> for Curve {
                     new_pairs.insert(*x * by_what.get_point(*x), *y);
                 }
                 self.curve = new_pairs;
-                self.oob_left = by_what.oob_left;
-                self.oob_right = by_what.oob_right;
+                //self.oob_left = by_what.oob_left;
+                //self.oob_right = by_what.oob_right;
             }
             CurveAxis::YAxis => {
                 for (x, y) in self.curve.iter_mut() {
@@ -570,13 +587,12 @@ impl BinaryCurveOperations<&Curve> for Curve {
 
     fn multiply(&mut self, by_what: &Curve) {
         let x_vals = x_union(self, by_what);
-        println!("x_vals: {:?}", x_vals);
+        let mut new_pairs = BTreeMap::new();
         
         for x in x_vals.iter() {
-            //println!("x: {}", x);
-            self.curve.insert(*x, self.get_point(*x) * by_what.get_point(*x));
-            //println!("Multiplied values: {} * {}", self.get_point(*x), by_what.get_point(*x))
+            new_pairs.insert(*x, self.get_point(*x) * by_what.get_point(*x));
         }
+        self.curve = new_pairs;
 
         self.oob_left  *= by_what.oob_left;
         self.oob_right *= by_what.oob_right;
@@ -584,10 +600,12 @@ impl BinaryCurveOperations<&Curve> for Curve {
 
     fn add(&mut self, what: &Curve) {
         let x_vals = x_union(self, what);
+        let mut new_pairs = BTreeMap::new();
 
         for x in x_vals.iter() {
-            self.curve.insert(*x, self.get_point(*x) + what.get_point(*x));
+            new_pairs.insert(*x, self.get_point(*x) + what.get_point(*x));
         }
+        self.curve = new_pairs;
 
         self.oob_left += what.oob_left;
         self.oob_right += what.oob_right;
