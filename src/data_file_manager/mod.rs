@@ -84,12 +84,15 @@ impl DataFileManager {
             paths: Vec::new(),
         };
 
-        let working_dir = env::current_dir();
-        data_file_manager.clone().add_search_path(working_dir.unwrap().display().to_string());
+        let working_dir = env::current_dir().expect("Failed to retrieve the current working directory");
+        data_file_manager.add_search_path(working_dir.display().to_string());
 
-        let extra_path = env::var("Zarza_ETC_DATA_DIR");
-        if !extra_path.clone().unwrap().is_empty() {
-            data_file_manager.clone().add_search_path(extra_path.unwrap());
+        let extra_path = env::var("ZARZA_ETC_DATA_DIR");
+        if extra_path.is_ok() {
+            let path = extra_path.unwrap();
+            if !path.is_empty() {
+                data_file_manager.add_search_path(path);
+            }
         }
 
         #[cfg(target_os = "macos")]
@@ -108,8 +111,6 @@ impl DataFileManager {
                 data_file_manager.clone().add_search_path(format!("{}/data", rsrc_str));
             }
         }
-        
-
         return data_file_manager;
     }
 
@@ -119,7 +120,7 @@ impl DataFileManager {
         &INSTANCE
     }
 
-    pub fn add_search_path(mut self, path: String) -> bool {
+    pub fn add_search_path(&mut self, path: String) -> bool {
 
         let mut sbuf: stat = unsafe { std::mem::zeroed() }; // Initialize sbuf with zeroed memory -> apparently this is necessary but i dont understand the whole process
 
@@ -141,7 +142,7 @@ impl DataFileManager {
         return true;
     }   
 
-    pub fn find(self, path: String, flags: i32) -> String {
+    pub fn find(&self, path: String, flags: i32) -> String {
         if path.is_empty() {
             return path;
         }
@@ -170,7 +171,7 @@ impl DataFileManager {
             }
 
         } else {
-            for p in self.paths {
+            for p in &self.paths {
                 let full_path = p.clone() + "/" + &path;
                 let c_full_path = CString::new(full_path.clone()).expect("CString::new failed");
                 if unsafe { access(c_full_path.as_ptr(), flags) } != -1 {
@@ -190,21 +191,27 @@ impl DataFileManager {
         return path;
     }
 
-    pub fn resolve(self, path: String) -> String {
+    pub fn resolve(&self, path: String) -> String {
         return self.find(path, R_OK)
-    
     }
 
-    pub fn suggest(self, path: String) -> String {
+    pub fn suggest(&self, path: String) -> String {
         return self.find(path, W_OK)
-
     }
 
-    pub fn search_paths(self) -> Vec<String> {
-        return self.paths;
+    pub fn search_paths(&self) -> Vec<String> {
+        return self.paths.clone();
+    }
+
+    pub fn data_file(path: &String) -> String {
+
+        let result = DataFileManager::instance().resolve(path.clone());
+        if result.is_empty() {
+            eprintln!("Required datafile. {} not found.", path);
+        }
+
+        return result;
     }
     
-
-
 }
 

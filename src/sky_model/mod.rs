@@ -19,9 +19,9 @@
 // Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 //
 
-use crate::curve;
-
 use ordered_float::NotNan;
+
+use crate::curve;
 use crate::spectrum::*;
 use crate::curve::*;
 use crate::curve::CurveAxis::YAxis;
@@ -29,8 +29,14 @@ use crate::curve::CurveAxis::XAxis;
 use curve::CurveOperations;
 use curve::BinaryCurveOperations;
 use crate::helpers::*;
+use crate::config_manager::*;
+use crate::data_file_manager::*;
 
+#[derive(Default)]
 pub struct SkyProperties {
+
+    pub config: Config,
+
     pub sky_emission: String,
     pub sky_emission_ref_airmass: f64,
     pub sky_extinction: String,
@@ -46,26 +52,66 @@ pub struct SkyModel {
 }
 
 impl SkyProperties {
-    pub fn new() -> SkyProperties {
-        SkyProperties {
-            sky_emission: String::from("src/sky_model/CAHASKy.csv"),
+
+    pub fn new(name: String) -> SkyProperties {
+        let mut config = Config::new(name.clone());
+        config.load();
+
+        let mut sky_properties = SkyProperties {
+            config,
+            sky_emission: String::from("CAHASKy.csv"),
             sky_emission_ref_airmass: 1.0,
-            sky_extinction: String::from("src/sky_model/CAHASkyExt.csv"),
-        }
+            sky_extinction: String::from("CAHASkyExt.csv"),
+        };
+
+        sky_properties.deserialize(); // override with values from YAMLif they exist
+        return sky_properties;
+    }
+
+    pub fn serialize(&mut self) -> bool {
+
+        self.config.yaml_config.as_mapping_mut().unwrap().insert(
+            "sky_emission".into(), Config::serialize_field(&self.sky_emission)
+        );
+        self.config.yaml_config.as_mapping_mut().unwrap().insert(
+            "sky_emission_ref_airmass".into(), Config::serialize_field(&self.sky_emission_ref_airmass)
+        );
+        self.config.yaml_config.as_mapping_mut().unwrap().insert(
+            "sky_extinction".into(), Config::serialize_field(&self.sky_extinction)
+        );
+
+        return true;
+    }
+
+    pub fn deserialize(&mut self) -> bool {
+
+        self.config.deserialize_field(&mut self.sky_emission, "sky_emission");
+        self.config.deserialize_field(&mut self.sky_emission_ref_airmass, "sky_emission_ref_airmass");
+        self.config.deserialize_field(&mut self.sky_extinction, "sky_extinction");
+
+        return true;
     }
 }
 
 impl SkyModel {
     pub fn new() -> Self {
+
+        let mut properties = SkyProperties::new("sky".to_string());
+        properties.config.load();
+        properties.deserialize();
+
         let mut sky_model = SkyModel {
-            properties: SkyProperties::new(),
+            properties,
+
             sky_spectrum: Default::default(),
             sky_ext: Default::default(),
             moon_to_mag: Default::default(),
             airmass: 1.0,
             moon_fraction: 0.0,
         };
-        
+
+        //sky_model.properties.config = ConfigManager::get("sky".into());
+
         sky_model.load_data();
         return sky_model;
     }
@@ -108,12 +154,12 @@ impl SkyModel {
         // Y Axis is 1e-16 Erg / (s cm^2 A) per 2.7 arcsec diam fiber. I.e.,
         //            1.7466e-17 erg / (s cm^2 A arcsec^2), i.e.
         //             7.4309394e-10 W / (m^2 A sr)  
-        let _ = self.sky_spectrum.load_curve("src/sky_model/CAHASky.csv").unwrap();
+        let _ = self.sky_spectrum.load_curve(&DataFileManager::data_file(&"CAHASky.csv".to_string())).unwrap();
         self.sky_spectrum.scale_axis_factor(YAxis, 7.4309394e-10); // To SI units
         self.sky_spectrum.scale_axis_factor(XAxis, 1e-10); // Convert angstrom to meters
-        let _ = self.sky_ext.load_curve("src/sky_model/CAHASkyExt.csv").unwrap();
+        let _ = self.sky_ext.load_curve(&DataFileManager::data_file(&"CAHASkyExt.csv".to_string())).unwrap();
         self.sky_ext.scale_axis(XAxis, 1e-9); // Convert nm to meters
-        let _ = self.moon_to_mag.load_curve("src/sky_model/moonBrightness.csv").unwrap();
+        let _ = self.moon_to_mag.load_curve(&DataFileManager::data_file(&"moonBrightness.csv".to_string())).unwrap();
     }
 
     pub fn set_moon(&mut self, moon: f64) {

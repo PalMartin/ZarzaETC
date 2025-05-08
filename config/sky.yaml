@@ -1,0 +1,4 @@
+sky:
+  sky_emission: CAHASKy.csv
+  sky_emission_ref_airmass: 1.0
+  sky_extinction: CAHASkyExt.csv

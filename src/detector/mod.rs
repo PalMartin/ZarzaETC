@@ -20,28 +20,84 @@
 //
 
 use ordered_float::NotNan;
+//use std::fs::File;
+//use std::io::Read;
+use serde_yaml; 
+use serde_yaml::Value; // this is for the YAML nodes as a generic type
+use ordered_float::Pow;
+//use serde::{Serialize, Deserialize};
+use std::collections::HashMap;
+
 use crate::spectrum::*;
 use crate::curve::*;
-use crate::instrument_model::*;
+use crate::config_manager::*;
+use crate::data_file_manager::*;
 use crate::curve::CurveAxis::XAxis;
 use crate::curve::CurveAxis::YAxis;
-use std::fs::File;
-use std::io::Read;
-use serde_yaml; 
-use ordered_float::Pow;
-use serde::{Serialize, Deserialize};
 
 pub const DETECTOR_PIXELS: f64 = 2048.0;     
 pub const DETECTOR_TEMPERATURE: f64 = 193.0;   // K
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq)]  
+#[derive(Default, Debug, Clone, PartialEq)]  
 pub struct DetectorSpec {
-    coating: String,
-    pixel_side: f64,
-    read_out_noise: f64,
-    gain: f64,
+
+    pub config: Config,
+
+    pub coating: String,
+    pub pixel_side: f64,
+    pub read_out_noise: f64,
+    pub gain: f64,
+    //pub q_e: f64, -> is now a curve in Detector
+
 }
+
 impl DetectorSpec {
+
+    pub fn new(name: String) -> Self {
+        let mut config = Config::new(name.clone());
+        config.load();
+
+        let mut spec = DetectorSpec {
+            config,
+            coating: "ML15".to_string(),
+            pixel_side: 15e-6,
+            read_out_noise: 0.0,
+            gain: 1.0,
+            //q_e: 1.0, -> is now a curve in Detector
+        };
+
+        spec.deserialize(); // override with values from YAML if they exist
+        return spec;
+    } 
+
+    pub fn serialize(&mut self) -> bool { // CONSIDER WHAT HAPPENS IF YAML_CONFIG IS NOT A MAPPING -> ERROR HANDLING?
+
+        self.config.yaml_config.as_mapping_mut().unwrap().insert(
+            "coating".into(), Config::serialize_field(&self.coating)
+        );
+        self.config.yaml_config.as_mapping_mut().unwrap().insert(
+            "pixel_side".into(), Config::serialize_field(&self.pixel_side)
+        );
+        self.config.yaml_config.as_mapping_mut().unwrap().insert(
+            "read_out_noise".into(), Config::serialize_field(&self.read_out_noise)
+        );
+        self.config.yaml_config.as_mapping_mut().unwrap().insert(
+            "gain".into(), Config::serialize_field(&self.gain)
+        );
+
+        return true
+    }
+
+    pub fn deserialize(&mut self) -> bool {
+
+        self.config.deserialize_field(&mut self.coating, "coating");
+        self.config.deserialize_field(&mut self.pixel_side, "pixel_side");
+        self.config.deserialize_field(&mut self.read_out_noise, "read_out_noise");
+        self.config.deserialize_field(&mut self.gain, "gain");
+
+        return true; 
+    }
+
     // Getter functions
     pub fn get_coating(&self) -> &String {
         &self.coating
@@ -58,81 +114,126 @@ impl DetectorSpec {
     pub fn get_gain(&self) -> &f64 {
         &self.gain
     }
+
 }
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]  
+#[derive(Default, Debug, Clone)]
 pub struct DetectorProperties {
-    ccd231_84_0_s77: DetectorSpec,
-    ccd231_84_0_h69: DetectorSpec,
+
+    pub config: Config,
+
+    pub detectors: HashMap<String, DetectorSpec> // not sure if the pointer in "std::map<std::string, DetectorSpec *> detectors;" is accounted for.
+
 }
 impl DetectorProperties {
-    pub fn new() -> Self {
-        let mut file = File::open("src/detector/detector.yaml").expect("Failed to open detector.yaml");
-        let mut yaml_content = String::new();
-        file.read_to_string(&mut yaml_content).expect("Failed to read file");
-        let detector_properties: DetectorProperties = serde_yaml::from_str(&yaml_content).expect("Failed to parse YAML");
-        return detector_properties;
+
+    pub fn new(name: String) -> DetectorProperties {
+        let mut properties = DetectorProperties {
+            config: Config::new(name),
+            detectors: HashMap::new(),
+        };
+
+        properties.deserialize();
+        return properties;
     }
-    // Getter functions
-    pub fn get_ccd231_84_0_s77(&self) -> &DetectorSpec {
-        &self.ccd231_84_0_s77
+
+    pub fn serialize(&mut self) -> bool {
+
+        let mut yaml_detectors: HashMap<String, Value> = HashMap::new();
+
+        for (k, v) in self.detectors.iter_mut() {
+            v.serialize();
+            yaml_detectors.insert(k.into(), v.config.yaml_node());
+        }
+
+        self.config.yaml_config.as_mapping_mut().unwrap().insert(
+            "detectors".into(), Config::serialize_field(&yaml_detectors)
+        );
+
+        return true;
     }
-    pub fn get_ccd231_84_0_h69(&self) -> &DetectorSpec {
-        &self.ccd231_84_0_h69
+
+    pub fn deserialize(&mut self) -> bool {
+
+        let mut yaml_detectors: HashMap<String, Value> = HashMap::new();
+
+        self.clear_detectors();
+
+        if self.config.deserialize_field(&mut yaml_detectors, "detectors") {
+            for (k, v) in yaml_detectors.iter_mut() {
+                let mut spec = DetectorSpec::new("detectors.".to_string() + &k);
+                if !spec.config.deserialize_yaml_node(&v) {
+                    eprintln!("{}: failed to deserialize detector.", k);
+                    // spec dropped
+                }
+                self.detectors.insert(k.to_string(), spec);
+            }
+        }
+    
+        return true;
+    }
+
+    pub fn clear_detectors(&mut self) {
+        self.detectors.clear();
+    }
+
+    // getter functions
+    pub fn get_detectors(&self) -> &HashMap<String, DetectorSpec> {
+        &self.detectors
     }
 }
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]  
+#[derive(Default, Debug, Clone)]  
 pub struct Detector {
+
     properties: DetectorProperties,
     detector: DetectorSpec,
+
     q_e: Curve,
     exposure_time: f64,
     photon_flux_per_pixel: Spectrum,  // ph / (px m^2 s)
     photons_per_pixel: Spectrum,      // ph/px
     electrons_per_pixel: Spectrum,    // e/px
     signal: Spectrum,                 // c
+
 }
 impl Detector {
-    pub fn get_properties(&self) -> &DetectorProperties {
-        &self.properties
-    }
-    pub fn get_detector(&self) -> &DetectorSpec {
-        &self.detector
-    }
-    pub fn get_q_e(&self) -> &Curve {
-        &self.q_e
-    }
-    pub fn get_exposure_time(&self) -> &f64 {
-        &self.exposure_time
-    }
-    pub fn get_photon_flux_per_pixel(&self) -> &Spectrum {
-        &self.photon_flux_per_pixel
-    }
-    pub fn get_photons_per_pixel(&self) -> &Spectrum {
-        &self.photons_per_pixel
-    }
-    pub fn get_electrons_per_pixel(&self) -> &Spectrum {
-        &self.electrons_per_pixel
-    }
-    pub fn get_signal(&self) -> &Spectrum {
-        &self.signal
-    }
+
     pub fn new() -> Detector {
-        Detector {
-            properties: DetectorProperties::new(),
+
+        let mut properties = DetectorProperties::new("detectors".to_string());
+        properties.config.load();
+        properties.deserialize();
+
+        let detector = Detector {
+            properties,
             detector: Default::default(),
+
             q_e: Default::default(),
             exposure_time: 3600.0,
             photon_flux_per_pixel: Default::default(),
             photons_per_pixel: Default::default(),
             electrons_per_pixel: Default::default(),
             signal: Default::default(),
-        }
+        };
+
+        //detector.properties.config = ConfigManager::get("detectors".into());
+
+        return detector;
     }
+
     pub fn properties(&self) -> &DetectorProperties {
         &self.properties
     }
+
+    pub fn get_spec(&self) -> DetectorSpec {
+        if self.detector == DetectorSpec::default() {
+            panic!("Detector is not set.");
+        }
+
+        return self.detector.clone();
+    }
+
 
     //pub fn set_pixel_photon_flux(&mut self, flux: Spectrum, slice: usize, arm: InstrumentArm) {
     pub fn set_pixel_photon_flux(&mut self, flux: Spectrum) {
@@ -145,38 +246,35 @@ impl Detector {
         self.exposure_time = t
     }
 
-    pub fn set_detector(&mut self, name: &str) { 
-        match name {
-            "CCD231-84-0-S77" => {
-                self.detector = self.properties.ccd231_84_0_s77.clone();
-                self.q_e.load_curve("src/detector/NBB_QE.csv").unwrap(); 
-                self.q_e.scale_axis(XAxis, 1e-9); // X axis was in nm
+    pub fn set_detector(&mut self, det: String) -> bool {  // CHANGE
 
+        if det == "ccd231_84_0_s77".to_string() {
+            self.q_e.load_curve(&DataFileManager::data_file(&"NBB_QE.csv".to_string())).unwrap();
+            self.q_e.scale_axis(XAxis, 1e-9); // X axis was in nm
+        } else if det == "ccd231_84_0_h69".to_string() {
+            self.q_e.load_curve(&DataFileManager::data_file(&"ML15_QE.csv".to_string())).unwrap();
+            self.q_e.scale_axis(XAxis, 1e-9); // X axis was in nm
+        } else if det == "ccd231_84_0_h69+dd".to_string() {
+            self.q_e.load_curve(&DataFileManager::data_file(&"ML15+DD_QE".to_string())).unwrap(); // For HR-R
+            self.q_e.scale_axis(XAxis, 1e-9); // X axis was in nm
+        } else {
+            eprintln!("Unknown detector {}; expected 'ccd231_84_0_s77', 'ccd231_84_0_h69' or 'ccd231_84_0_h69'.", det);
+        }
+        
+        let it = self.properties.detectors.get(&det);
+
+        match it {
+            Some(spec) => {
+                self.detector = spec.clone();
+                self.detector.deserialize();
+                return true;
             }
-            "CCD231-84-0-H69" => {
-                self.detector = self.properties.ccd231_84_0_h69.clone();
-                self.q_e.load_curve("src/detector/ML15_QE.csv").unwrap(); 
-                self.q_e.scale_axis(XAxis, 1e-9); // X axis was in nm
-            }
-            "CCD231-84-0-H69+DD" => {
-                self.detector = self.properties.ccd231_84_0_h69.clone();
-                self.q_e.load_curve("src/detector/ML15+DD_QE.csv").unwrap(); // For HR-R
-                self.q_e.scale_axis(XAxis, 1e-9); // X axis was in nm
-            }
-            _ => {
-                eprintln!("Unknown detector {}; expected 'CCD231-84-0-S77', 'CCD231-84-0-H69' or 'CCD231-84-0-H69+DD'.", name);
+            None => {
+                self.detector = Default::default();
+                return false;
             }
         }
     }  
-
-
-    pub fn get_spec(&self) -> DetectorSpec {
-        if self.detector == DetectorSpec::default() {
-            panic!("Detector is not set.");
-        }
-
-        return self.detector.clone();
-    }
 
     pub fn dark_electrons(&self, t: f64) -> f64 {
         if self.detector == DetectorSpec::default() {
@@ -281,14 +379,40 @@ impl Detector {
     }
 
     pub fn snr_crv(&mut self) -> &mut Curve { 
-        let mut noise_curve = self.noise_crv(); // binding
+        let noise_curve = self.noise_crv(); // binding
         let mut noise_inv = noise_curve;
         noise_inv.invert_axis(YAxis, NotNan::new(1.0).unwrap());
         
-        let mut snr = self.signal.get_curve_mut(); 
+        let snr = self.signal.get_curve_mut(); 
         snr.multiply(&*noise_inv.get_curve_mut());
     
         return snr;
+    }
+
+    // getter functions
+    pub fn get_properties(&self) -> &DetectorProperties {
+        &self.properties
+    }
+    pub fn get_detector(&self) -> &DetectorSpec {
+        &self.detector
+    }
+    pub fn get_q_e(&self) -> &Curve {
+        &self.q_e
+    }
+    pub fn get_exposure_time(&self) -> &f64 {
+        &self.exposure_time
+    }
+    pub fn get_photon_flux_per_pixel(&self) -> &Spectrum {
+        &self.photon_flux_per_pixel
+    }
+    pub fn get_photons_per_pixel(&self) -> &Spectrum {
+        &self.photons_per_pixel
+    }
+    pub fn get_electrons_per_pixel(&self) -> &Spectrum {
+        &self.electrons_per_pixel
+    }
+    pub fn get_signal(&self) -> &Spectrum {
+        &self.signal
     }
 }
 

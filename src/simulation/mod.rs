@@ -27,9 +27,10 @@ use crate::instrument_model::*;
 use crate::helpers::*;
 use crate::detector::*;
 use crate::curve::CurveAxis::*;
+use crate::data_file_manager::*;
 use crate::spectrum::SpectrumAxisOperations;
 use std::collections::BTreeMap;
-use ordered_float::Pow;
+//use ordered_float::Pow;
 
 #[derive(Clone, Debug)]
 pub struct SimulationParams {
@@ -114,26 +115,8 @@ impl SimulationParams {
 
 pub struct Simulation {
     input: Spectrum,
-    cousins_r: Curve,
-    cousins_r_equiv_bw: f64,
-    gjc_u: Curve,
-    gjc_u_equiv_bw: f64,
-    gjc_b: Curve,
-    gjc_b_equiv_bw: f64,
-    gjc_v: Curve,
-    gjc_v_equiv_bw: f64,
-    gjc_r: Curve,
-    gjc_r_equiv_bw: f64,
-    gjc_i: Curve,
-    gjc_i_equiv_bw: f64,
-    sdss_u: Curve,
-    sdss_u_equiv_bw: f64,
-    sdss_g: Curve,
-    sdss_g_equiv_bw: f64,
-    sdss_r: Curve,
-    sdss_r_equiv_bw: f64,
-    sdss_i: Curve,
-    sdss_i_equiv_bw: f64,
+    filter: Curve,
+    filter_equiv_bw: f64,
     sky: Spectrum,
     sky_model: SkyModel,
     tarsis_model: InstrumentModel,
@@ -149,12 +132,18 @@ impl Simulation {
     pub fn get_input_mut(&mut self) -> &mut Spectrum {
         &mut self.input
     }
-    pub fn get_cousins_r(&self) -> &Curve {
-        &self.cousins_r
+    pub fn get_filter(&self) -> &Curve {
+        &self.filter
     }
-    pub fn get_cousins_r_equiv_bw(&self) -> &f64 {
-        &self.cousins_r_equiv_bw
+    pub fn get_filter_equiv_bw(&self) -> &f64 {
+        &self.filter_equiv_bw
     }
+    //pub fn get_cousins_r(&self) -> &Curve {
+    //     &self.cousins_r
+    // }
+    // pub fn get_cousins_r_equiv_bw(&self) -> &f64 {
+    //     &self.cousins_r_equiv_bw
+    // }
     pub fn get_sky(&self) -> &Spectrum {
         &self.sky
     }
@@ -180,29 +169,15 @@ impl Simulation {
         &mut self.params
     }
 
-    pub fn new() -> Simulation {
+    pub fn new(filter_path: &String) -> Simulation {
+        // FILTER PATH: the path of the desired filter (cousins_r, gjc or sdss):
+        // Generic_Cousins_R.csv; Generic_Johnson_UBVRIJHKL.U.csv; Generic_Johnson_UBVRIJHKL.B.csv; 
+        // Generic_Johnson_UBVRIJHKL.V.csv; Generic_Johnson_UBVRIJHKL.R.csv; Generic_Johnson_UBVRIJHKL.I.csv; 
+        // SLOAN_SDSS.u.csv; SLOAN_SDSS.g.csv; SLOAN_SDSS.r.csv; SLOAN_SDSS.i.csv
         let mut simulation = Simulation {
             input: Spectrum::default(),
-            cousins_r: Curve::default(),
-            cousins_r_equiv_bw: 0.0,
-            gjc_u: Curve::default(),
-            gjc_u_equiv_bw: 0.0,
-            gjc_b: Curve::default(),
-            gjc_b_equiv_bw: 0.0,
-            gjc_v: Curve::default(),
-            gjc_v_equiv_bw: 0.0,
-            gjc_r: Curve::default(),
-            gjc_r_equiv_bw: 0.0,
-            gjc_i: Curve::default(),
-            gjc_i_equiv_bw: 0.0,
-            sdss_u: Curve::default(),
-            sdss_u_equiv_bw: 0.0,
-            sdss_g: Curve::default(),
-            sdss_g_equiv_bw: 0.0,
-            sdss_r: Curve::default(),
-            sdss_r_equiv_bw: 0.0,
-            sdss_i: Curve::default(),
-            sdss_i_equiv_bw: 0.0,
+            filter: Curve::default(),
+            filter_equiv_bw: 0.0,
             sky: Spectrum::default(),
             sky_model: SkyModel::new(),
             tarsis_model: InstrumentModel::new(),
@@ -210,55 +185,10 @@ impl Simulation {
             params: SimulationParams::new(),
         };
 
-        let _ = simulation.cousins_r.load_curve("src/simulation/filters/Generic_Cousins_R.csv").unwrap();
-        simulation.cousins_r.scale_axis(XAxis, 1e-10); // X axis was in angstrom
-        simulation.cousins_r.invert_axis(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap()); // To frequency
-        simulation.cousins_r_equiv_bw = simulation.cousins_r.integral();
-
-        let _ = simulation.gjc_u.load_curve("src/simulation/filters/Generic_Johnson_UBVRIJHKL.U.csv").unwrap();
-        simulation.gjc_u.scale_axis(XAxis, 1e-10); // X axis was in angstrom
-        simulation.gjc_u.invert_axis(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap()); // To frequency
-        simulation.gjc_u_equiv_bw = simulation.gjc_u.integral();
-
-        let _ = simulation.gjc_b.load_curve("src/simulation/filters/Generic_Johnson_UBVRIJHKL.B.csv").unwrap();
-        simulation.gjc_b.scale_axis(XAxis, 1e-10); // X axis was in angstrom
-        simulation.gjc_b.invert_axis(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap()); // To frequency
-        simulation.gjc_b_equiv_bw = simulation.gjc_b.integral();
-
-        let _ = simulation.gjc_v.load_curve("src/simulation/filters/Generic_Johnson_UBVRIJHKL.V.csv").unwrap();
-        simulation.gjc_v.scale_axis(XAxis, 1e-10); // X axis was in angstrom
-        simulation.gjc_v.invert_axis(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap()); // To frequency
-        simulation.gjc_v_equiv_bw = simulation.gjc_v.integral();
-
-        let _ = simulation.gjc_r.load_curve("src/simulation/filters/Generic_Johnson_UBVRIJHKL.R.csv").unwrap();
-        simulation.gjc_r.scale_axis(XAxis, 1e-10); // X axis was in angstrom
-        simulation.gjc_r.invert_axis(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap()); // To frequency
-        simulation.gjc_r_equiv_bw = simulation.cousins_r.integral();
-
-        let _ = simulation.gjc_i.load_curve("src/simulation/filters/Generic_Johnson_UBVRIJHKL.I.csv").unwrap();
-        simulation.gjc_i.scale_axis(XAxis, 1e-10); // X axis was in angstrom
-        simulation.gjc_i.invert_axis(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap()); // To frequency
-        simulation.gjc_i_equiv_bw = simulation.gjc_i.integral();
-
-        let _ = simulation.sdss_u.load_curve("src/simulation/filters/SLOAN_SDSS.u.csv").unwrap();
-        simulation.sdss_u.scale_axis(XAxis, 1e-10); // X axis was in angstrom
-        simulation.sdss_u.invert_axis(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap()); // To frequency
-        simulation.sdss_u_equiv_bw = simulation.sdss_u.integral();
-
-        let _ = simulation.sdss_g.load_curve("src/simulation/filters/SLOAN_SDSS.g.csv").unwrap();
-        simulation.sdss_g.scale_axis(XAxis, 1e-10); // X axis was in angstrom
-        simulation.sdss_g.invert_axis(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap()); // To frequency
-        simulation.sdss_g_equiv_bw = simulation.sdss_g.integral();
-
-        let _ = simulation.sdss_r.load_curve("src/simulation/filters/SLOAN_SDSS.r.csv").unwrap();
-        simulation.sdss_r.scale_axis(XAxis, 1e-10); // X axis was in angstrom
-        simulation.sdss_r.invert_axis(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap()); // To frequency
-        simulation.sdss_r_equiv_bw = simulation.sdss_r.integral();
-
-        let _ = simulation.sdss_i.load_curve("src/simulation/filters/SLOAN_SDSS.i.csv").unwrap();
-        simulation.sdss_i.scale_axis(XAxis, 1e-10); // X axis was in angstrom
-        simulation.sdss_i.invert_axis(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap()); // To frequency
-        simulation.sdss_i_equiv_bw = simulation.sdss_i.integral();
+        let _ = simulation.filter.load_curve(&DataFileManager::data_file(&filter_path.to_string())).unwrap();
+        simulation.filter.scale_axis(XAxis, 1e-10); // X axis was in angstrom
+        simulation.filter.invert_axis(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap()); // To frequency
+        simulation.filter_equiv_bw = simulation.filter.integral();
 
         return simulation;
     }
@@ -269,260 +199,25 @@ impl Simulation {
 
     }
 
-    pub fn set_input_template(&mut self, template: &str) { // CHECK UNITS OF THE TEMPLATES
-        match template {
-            "Ell2" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/Ell2_template.csv").unwrap(); // erg s-1 cm-2 A-1
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m   
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "Ell5" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/Ell5_template.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "Ell13" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/Ell13_template.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "S0" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/S0_template.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "Sa" => {
-                // X axis is Angstrom
-                // Y Axis is 1e0 Erg / (s cm^2 A) per 2.7 arcsec diam fiber. I.e.,
-                //            1.7466e-1 erg / (s cm^2 A arcsec^2), i.e. // ¿COMO SALE ESTO?
-                //             7.4309394e7 W / (m^2 A sr)  
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/Sa_template.csv").unwrap();
-                println!("OBJ SPECTRUM: {}", spec.get_point(NotNan::new(6550.0).unwrap()));
-                //let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                //let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                let _ = spec.scale_axis_factor(YAxis, 7.4309394e7); // To SI units  -> FIX THE ANGULAR UNITS: THIS IS CONSIDERING ALL THE EMISSION OF THE GALAXY IS PUNTUAL
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // Convert angstrom to meters
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1 sr-1)
-            }
-            "Sb" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/Sb_template.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "Sc" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/Sc_template.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "Sd" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/Sd_template.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "Sdm" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/Sdm_template.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "Spi4" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/Spi4_template.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "LINER" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/liner_template.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "Sy1" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/seyfert1_template.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "Sy2" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/seyfert2_template.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "QSO" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/qso_template.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "O9V" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_O9V.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "BOV" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_BOV.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "B3V" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_B3V.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "A0V" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_A0V.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "A2V" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_A2V.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "A5V" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_A5V.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "F0V" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_F0V.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "F2V" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_F2V.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "F5V" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_F5V.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "G0V" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_G0V.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "G2V" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_G2V.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "G5V" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_G5V.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "K0V" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_K0V.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "K2V" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_K2V.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "K5V" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_K5V.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "K7V" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_K7V.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "M0V" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_M0V.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "M2V" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_M2V.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "M4V" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_M4V.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            "M5V" => {
-                let mut spec = Spectrum::default();
-                let _ = spec.load_curve("src/simulation/SEDs/pickles_uk_M5V.csv").unwrap();
-                let _ = spec.scale_axis_factor(XAxis, 1e-10); // erg s-1 cm-2 m-1 | A -> m
-                let _ = spec.scale_axis_factor(YAxis, 1e-3); // J s-1 m-2 m-1
-                self.input = spec; // spectra in radiance units (J s-1 m-2 m-1)
-            }
-            _ => {
-                eprintln!("Warning: Unknown template '{}'. Expected: 'Ell2', 'Ell5', 'Ell13', 'S0', 'Sa', 'Sb', 'Sc', 'Sd', 'Sdm', 'Spi4', 'LINER', 
-                'Sy1', 'Sy2', 'QSO' ,'O9V' ,'B0V' ,'B3V' ,'A0V' ,'A2V' ,'A5V' ,'F0V' ,'F2V' ,'F5V' ,'G0V' ,'G2V' ,'G5V' ,'K0V' ,'K2V' ,'K5V' ,'K7V' 
-                ,'M0V' ,'M2V' ,'M4V' ,'M5V'.", template);
-            }
-            // ADD THE STELLAR LIBRARIES
-        }
+    pub fn set_input_template(&mut self, template_path: &String) { // CHECK UNIT CONVERSION!!
+        // TEMPLATE PATH: the path of the desired spectral template (galactic (swire), active galaxy (AGN atlas) or stellar (pickles)):
+        // Ell2_template.csv; ll5_template.csv; Ell13_template.csv; S0_template.csv; Sa_template.csv; Sb_template.csv;
+        // Sc_template.csv; Sd_template.csv; Sdm_template.csv; Spi4_template.csv; liner_template.csv; eyfert1_template.csv;
+        // seyfert2_template.csv; qso_template.csv; pickles_uk_O9V.csv; pickles_uk_BOV.csv; pickles_uk_B3V.csv; pickles_uk_A0V.csv;
+        // pickles_uk_A2V.csv; pickles_uk_A5V.csv; pickles_uk_F0V.csv; pickles_uk_F2V.csv; pickles_uk_F5V.csv; pickles_uk_G0V.csv;
+        // pickles_uk_G2V.csv; pickles_uk_G5V.csv; pickles_uk_K0V.csv; pickles_uk_K2V.csv; pickles_uk_K5V.csv; pickles_uk_K7V.csv;
+        // pickles_uk_M0V.csv; pickles_uk_M2V.csv; pickles_uk_M4V.csv; pickles_uk_M5V.csv; 
+
+        let mut spec = Spectrum::default();
+        // X axis is Angstrom
+        // Y Axis is 1e0 Erg / (s cm^2 A) per 2.7 arcsec diam fiber. I.e.,
+        //            1.7466e-1 erg / (s cm^2 A arcsec^2), i.e. 
+        //             7.4309394e7 W / (m^2 A sr)  
+        let _ = spec.load_curve(&DataFileManager::data_file(&template_path.to_string())).unwrap(); // erg s-1 cm-2 A-1 -> CHECK IF ITS REAL FOR EVERY TEMPLATE
+        let _ = spec.scale_axis_factor(YAxis, 7.4309394e7); // To SI units  -> FIX THE ANGULAR UNITS: THIS IS CONSIDERING ALL THE EMISSION OF THE GALAXY IS PUNTUAL
+        let _ = spec.scale_axis_factor(XAxis, 1e-10); // Convert angstrom to meters
+        self.input = spec; // spectra in radiance units (J s-1 m-2 m-1 sr-1)
+
         //match spatial_distr {
         //    "infinite" => {
         //        let intensity_grid = infinite_profile(grid_size);
@@ -606,17 +301,17 @@ impl Simulation {
         }
     }
 
-    pub fn normalize_to_r_mag(&mut self, mag_r: f64) {
+    pub fn normalize_to_r_mag(&mut self, mag_r: f64) { // ONLY FOR WHEN FILTER -> COUSINS_R IS SELECTED
         let mut filtered = Spectrum::default();
         filtered.from_existing(&self.input.get_curve(), 1.0);
         filtered.invert_axis_spec(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap());
         //println!("FILTERED: {:?}", filtered.get_curve().get_curve());
-        filtered.multiply(&self.cousins_r); 
+        filtered.multiply(&self.filter); 
         
         let desired_sb = surface_brightness_ab2freq_radiance(mag_r);
         //println!("desired_sb {}:", desired_sb);
 
-        let mean_sb = filtered.integral() / self.cousins_r_equiv_bw;
+        let mean_sb = filtered.integral() / self.filter_equiv_bw;
         //println!("cousins_re_quiv_bw {}:", self.cousins_re_quiv_bw);
         //println!("mean_sb {}:", mean_sb);
 
@@ -627,62 +322,11 @@ impl Simulation {
         // Normalize to Johnson-Cousins U,B,V,R,I or SDSS u,g,r,i bands
         let mut filtered = Spectrum::default();
         filtered.from_existing(&self.input.get_curve(), 1.0);
-        filtered.invert_axis_spec(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap());  
-        match filter { 
-            "J-C_U" => {  
-                let desired_sb = surface_brightness_ab2freq_radiance(mag);
-                let mean_sb = filtered.integral() / self.gjc_u_equiv_bw;
-            }
-            "J-C_B" => {
-                let desired_sb = surface_brightness_ab2freq_radiance(mag);
-                let mean_sb = filtered.integral() / self.gjc_b_equiv_bw;
-            }
+        filtered.invert_axis_spec(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap()); 
 
-            "J-C_V" => {
-                let desired_sb = surface_brightness_ab2freq_radiance(mag);
-                let mean_sb = filtered.integral() / self.gjc_v_equiv_bw;
-                self.input.scale_axis_factor(YAxis, desired_sb / mean_sb);
-            }
-
-            "J-C_R" => {
-                let desired_sb = surface_brightness_ab2freq_radiance(mag);
-                let mean_sb = filtered.integral() / self.gjc_r_equiv_bw;
-                self.input.scale_axis_factor(YAxis, desired_sb / mean_sb);
-            }
-
-            "J-C_I" => {
-                let desired_sb = surface_brightness_ab2freq_radiance(mag);
-                let mean_sb = filtered.integral() / self.gjc_i_equiv_bw;
-                self.input.scale_axis_factor(YAxis, desired_sb / mean_sb);
-            }
-
-            "SDSS_u" => {
-                let desired_sb = surface_brightness_ab2freq_radiance(mag);
-                let mean_sb = filtered.integral() / self.sdss_u_equiv_bw;
-                self.input.scale_axis_factor(YAxis, desired_sb / mean_sb);
-            }
-
-            "SDSS_g" => {
-                let desired_sb = surface_brightness_ab2freq_radiance(mag);
-                let mean_sb = filtered.integral() / self.sdss_g_equiv_bw;
-                self.input.scale_axis_factor(YAxis, desired_sb / mean_sb);
-            }
-
-            "SDSS_r" => {
-                let desired_sb = surface_brightness_ab2freq_radiance(mag);
-                let mean_sb = filtered.integral() / self.sdss_r_equiv_bw;
-                self.input.scale_axis_factor(YAxis, desired_sb / mean_sb);
-            }
-
-            "SDSS_i" => {
-                let desired_sb = surface_brightness_ab2freq_radiance(mag);
-                let mean_sb = filtered.integral() / self.sdss_i_equiv_bw;
-                self.input.scale_axis_factor(YAxis, desired_sb / mean_sb);
-            },
-            _ => {
-            eprintln!("Warning: Unknown filter '{}'. Expected: 'J-C_U', 'J-C_B', 'J-C_V', 'J-C_R', 'J-C_I', 'SDSS_u', 'SDSS_g', 'SDSS_r' or 'SDSS_i'.", filter)
-            }
-        }
+        let desired_sb = surface_brightness_ab2freq_radiance(mag);
+        let mean_sb = filtered.integral() / self.filter_equiv_bw;
+        self.input.scale_axis_factor(YAxis, desired_sb / mean_sb);
     }
 
     pub fn set_params(&mut self, params: SimulationParams) {
@@ -752,144 +396,6 @@ impl Simulation {
     pub fn wl_to_pixel_curve(&mut self, arm: InstrumentArm) -> Curve {
         return self.tarsis_model.wavelength_to_pix_crv(arm, self.params.slice).unwrap();
     }
-
-    //pub fn signal_px(&self, px: NotNan<f64>, arm: InstrumentArm) -> f64 { // NOT CONSIDERED SKY EXTINCTION NOR INSTRUMENT TRANSMISSION
-    //    let spec = self.det.get_spec();
-    //    if spec == DetectorSpec::default() {
-    //        panic!("Detector is not set.");
-    //    }
-
-    //    match arm {
-    //        InstrumentArm::BlueArm => {
-    //            return self.det.signal_px(px) * self.tarsis_model.get_blue_ml15().get_point(px) * (1.0 - self.sky_model.get_sky_ext().get_point(px));
-    //        }
-    //        InstrumentArm::RedArm => { 
-    //            return self.det.signal_px(px) * self.tarsis_model.get_red_ml15().get_point(px) * (1.0 - self.sky_model.get_sky_ext().get_point(px));
-    //        }
-    //    }
-    //}
-
-    //pub fn signal_crv(&self, arm: InstrumentArm) -> Spectrum {  // NOT CONSIDERED SKY EXTINCTION NOR INSTRUMENT TRANSMISSION
-    //    let spec = self.det.get_spec();
-    //    if spec == DetectorSpec::default() {
-    //        panic!("Detector is not set.");
-    //    }
-
-    //    let mut signal = self.det.signal_crv();
-    //    match arm {
-    //        InstrumentArm::BlueArm => {
-    //            signal.multiply(self.tarsis_model.get_blue_ml15());
-    //        }
-    //        InstrumentArm::RedArm => {
-    //            signal.multiply(self.tarsis_model.get_red_ml15());
-    //       }
-    //    }
-    //    let mut sky_ext = self.sky_model.get_sky_ext().clone();
-    //    sky_ext.multiply(-1.0);
-    //    sky_ext.add(1.0);
-    //    signal.multiply(&sky_ext);
-
-    //    return signal;
-    //}
-
-    //pub fn noise_px(&self, px: NotNan<f64>, arm: InstrumentArm) -> f64 { // NO RANDOM SOURCE OF NOISE IMPLEMENTED -> CHECK CalculationWorker.cpp
-    //    let spec = self.det.get_spec();
-    //    if spec == DetectorSpec::default() {
-    //        panic!("Detector is not set.");
-    //    }
-
-    //    let mut ron2 = self.det.get_detector().get_read_out_noise() * self.det.get_detector().get_read_out_noise();
-    //    let inv_gain = 1.0 / self.det.get_detector().get_gain();
-    //    let inv_gain_2 = 1.0 / (self.det.get_detector().get_gain() * self.det.get_detector().get_gain());
-         
-    //    let mut sky = self.sky_model.get_sky_spectrum().get_point(px);
-    //    sky = sky * self.params.dit * self.params.ndit as f64 * self.det.get_detector().get_pixel_side() * self.det.get_detector().get_pixel_side();
-    //    match arm {
-    //        InstrumentArm::RedArm => {
-    //            sky = sky * self.tarsis_model.get_red_repx()[self.params.slice].get_point(px);
-    //        }
-    //        InstrumentArm::BlueArm => {
-    //            sky = sky * self.tarsis_model.get_blue_repx()[self.params.slice].get_point(px);
-    //        }
-    //    }
-    //    sky *= self.det.get_q_e().get_point(px);
-    //    sky *= inv_gain;
-
-    //    return (inv_gain_2 * self.det.electrons_px(px) + sky +  ron2).sqrt();
-    //}
-
-    //pub fn noise_crv(&self, arm: InstrumentArm) -> Spectrum { // NO RANDOM SOURCE OF NOISE IMPLEMENTED -> CHECK CalculationWorker.cpp
-    //    let spec = self.det.get_spec();
-    //    if spec == DetectorSpec::default() {
-    //        panic!("Detector is not set.");
-    //    }
-
-    //    let spec = self.det.get_spec();
-    //    if spec == DetectorSpec::default() {
-    //        panic!("Detector is not set.");
-    //    }
-
-    //    let mut ron2 = self.det.get_detector().get_read_out_noise() * self.det.get_detector().get_read_out_noise();
-    //    let inv_gain = 1.0 / self.det.get_detector().get_gain();
-    //    let inv_gain_2 = 1.0 / (self.det.get_detector().get_gain() * self.det.get_detector().get_gain());
-         
-    //    let mut sky = self.sky_model.get_sky_spectrum().get_curve();
-    //    sky.multiply(self.params.dit * self.params.ndit as f64 * self.det.get_detector().get_pixel_side() * self.det.get_detector().get_pixel_side());
-    //    match arm {
-    //        InstrumentArm::RedArm => {
-    //            sky.multiply(&self.tarsis_model.get_red_repx()[self.params.slice]);
-    //        }
-    //        InstrumentArm::BlueArm => {
-    //            sky.multiply(&self.tarsis_model.get_blue_repx()[self.params.slice]);
-    //        }
-    //    }
-    //    sky.multiply(self.det.get_q_e());
-    //    sky.multiply(inv_gain);
-
-    //    let mut noise_spec = Spectrum::default();
-    //    noise_spec = self.det.electrons_crv();
-    //    noise_spec.get_curve_mut().multiply(inv_gain_2);
-    //    noise_spec.get_curve_mut().add(&sky);
-    //    noise_spec.get_curve_mut().add(ron2);
-    //    for (_x, y) in noise_spec.get_curve_mut().get_map_mut().iter_mut() {
-    //        *y = y.sqrt(); 
-    //    }
-
-    //    return noise_spec;
-    //}
-
-    //pub fn electrons_px(&self, px: NotNan<f64>) -> f64 {
-    //    let spec = self.det.get_spec();
-    //    if spec == DetectorSpec::default() {
-    //        panic!("Detector is not set.");
-    //    }
-
-    //    return self.det.electrons_px(px);
-    //}
-
-    //pub fn electrons_crv(&self) -> Spectrum {
-    //    let spec = self.det.get_spec();
-    //    if spec == DetectorSpec::default() {
-    //        panic!("Detector is not set.");
-    //    }
-
-    //   return self.det.electrons_crv();
-    //}
-
-    //pub fn snr_from_texp_px(&self, px: NotNan<f64>, arm: InstrumentArm) -> f64 {
-    //    return self.signal_px(px, arm.clone()) / self.noise_px(px, arm);
-    //}
-
-    //pub fn snr_from_texp_crv(&mut self, arm: InstrumentArm) -> Curve {
-    //    let mut noise_curve = self.noise_crv(arm.clone()); 
-    //    let mut noise_inv = noise_curve.get_curve_mut();
-    //    noise_inv.invert_axis(YAxis, NotNan::new(1.0).unwrap());
-        
-    //    let mut signal_curve = self.signal_crv(arm); 
-    //    let mut snr = signal_curve.get_curve_mut();
-    //    snr.multiply(&*noise_inv);
-    //    return snr.clone();
-    //}
 
     pub fn texp_from_snr_px(&self, px: NotNan<f64>, arm: InstrumentArm) -> f64 { // CHECK EXPRESSION
         let n = self.det.get_photon_flux_per_pixel().get_point(px) * self.det.get_detector().get_pixel_side() * self.det.get_detector().get_pixel_side() * self.det.get_q_e().get_point(px) / self.det.get_detector().get_gain();

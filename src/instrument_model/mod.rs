@@ -19,13 +19,16 @@
 // Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 //
 
-use crate::curve;
-
 use ordered_float::NotNan;
+
+
+use crate::curve;
 use crate::spectrum::*;
 use crate::curve::*;
 use curve::CurveAxis::*;
 use crate::helpers::*;
+use crate::config_manager::*;
+use crate::data_file_manager::*;
 
 
 pub const CAHA_APERTURE_DIAMETER: f64 = 3.5;      // m
@@ -35,8 +38,11 @@ pub const CAHA_EFFECTIVE_AREA: f64 = 9.093;       // m^2
 pub const TARSIS_SLICES: usize = 40;              // Number of TARSIS slices per FOV
 pub const SPECTRAL_PIXEL_LENGTH: f64 = 2048.0;    // Guessed from the resolution elements and ranges
 
-#[derive(Clone)]
+#[derive(Default, Clone)]
 pub struct InstrumentProperties {
+
+    pub config: Config,
+
     f_num: f64,
     ap_efficiency: f64,
     coating: String,
@@ -71,13 +77,46 @@ pub struct InstrumentModel {
 }
 
 impl InstrumentProperties {
-    pub fn new() -> InstrumentProperties {
-        InstrumentProperties {
+    pub fn new(name: String) -> InstrumentProperties {
+        let mut config = Config::new(name.clone());
+        config.load();
+
+        let mut instrument_properties = InstrumentProperties {
+            config,
             f_num: CAHA_FOCAL_LENGTH / CAHA_APERTURE_DIAMETER,
             ap_efficiency: CAHA_EFFECTIVE_AREA / CAHA_APERTURE_AREA,
-            coating: String::from("ML15"),
-        }
+            coating: "ML15".to_string(),
+        };
+
+        instrument_properties.deserialize(); // override with values from YAMLif they exist
+        return instrument_properties;
     }
+
+    pub fn serialize(&mut self) -> bool {
+
+        self.config.yaml_config.as_mapping_mut().unwrap().insert(
+            "f_num".into(), Config::serialize_field(&self.f_num)
+        );
+        self.config.yaml_config.as_mapping_mut().unwrap().insert(
+            "ap_efficiency".into(), Config::serialize_field(&self.ap_efficiency)
+        );
+        self.config.yaml_config.as_mapping_mut().unwrap().insert(
+            "coating".into(), Config::serialize_field(&self.coating)
+        );
+
+        return true;
+    }
+
+    pub fn deserialize(&mut self) -> bool {
+
+        self.config.deserialize_field(&mut self.f_num, "f_num");
+        self.config.deserialize_field(&mut self.ap_efficiency, "ap_efficiency");
+        self.config.deserialize_field(&mut self.coating, "coating");
+
+        return true;
+    }
+
+    // getter functions
     pub fn get_f_num(&self) -> &f64 {
         &self.f_num
     }
@@ -92,11 +131,18 @@ impl InstrumentProperties {
     }
 }
 
+
 impl InstrumentModel {
     // Creates an Instrument Model
     pub fn new() -> InstrumentModel {
+
+        let mut properties = InstrumentProperties::new("instrument".to_string());
+        properties.config.load();
+        properties.deserialize();
+
         let mut instrument_model = InstrumentModel {
-            properties: InstrumentProperties::new(),
+            properties,
+
             blue_ml15: Default::default(),
             blue_nbb: Default::default(),
             red_ml15: Default::default(),
@@ -112,13 +158,13 @@ impl InstrumentModel {
             current_path: InstrumentArm::BlueArm,  // Blue arm is the default value
         };
         
-        let _ = instrument_model.blue_ml15.load_curve("src/instrument_model/blueTransmission.csv");
+        let _ = instrument_model.blue_ml15.load_curve(&DataFileManager::data_file(&"blueTransmission.csv".to_string()));
         instrument_model.blue_ml15.scale_axis(XAxis, 1e-9);
 
-        let _ = instrument_model.blue_nbb.load_curve("src/instrument_model/blueTransmission2.csv");
+        let _ = instrument_model.blue_nbb.load_curve(&DataFileManager::data_file(&"blueTransmission2.csv".to_string()));
         instrument_model.blue_nbb.scale_axis(XAxis, 1e-9);
 
-        let _ = instrument_model.red_ml15.load_curve("src/instrument_model/redTransmission.csv");
+        let _ = instrument_model.red_ml15.load_curve(&DataFileManager::data_file(&"redTransmission.csv".to_string()));
         instrument_model.red_ml15.scale_axis(XAxis, 1e-9);
 
         // Iteration over tarsis slices
@@ -126,7 +172,7 @@ impl InstrumentModel {
             // Units of this datafile are nm -> nm/px
             // We invert the Y axis of the curve to have (m -> px / m)
             let mut blue_disp_curve: Curve = Default::default();
-            let _ = blue_disp_curve.load_slice_dat("src/instrument_model/dispersionBlue.csv", i);
+            let _ = blue_disp_curve.load_slice_dat(&DataFileManager::data_file(&"dispersionBlue.csv".to_string()), i);
             let _ = blue_disp_curve.extend_right();
             let _ = blue_disp_curve.extend_left();
             let _ = blue_disp_curve.scale_axis(XAxis, 1e-9);
@@ -135,7 +181,7 @@ impl InstrumentModel {
             let _ = instrument_model.blue_disp.push(blue_disp_curve.clone());
 
             let mut blue_repx_curve: Curve = Default::default();
-            let _ = blue_repx_curve.load_slice_dat("src/instrument_model/pxResolutionBlue.csv", i);
+            let _ = blue_repx_curve.load_slice_dat(&DataFileManager::data_file(&"pxResolutionBlue.csv".to_string()), i);
             let _ = blue_repx_curve.extend_right();
             let _ = blue_repx_curve.extend_left();
             let _ = blue_repx_curve.scale_axis(XAxis, 1e-9);
@@ -157,7 +203,7 @@ impl InstrumentModel {
             // Units of this datafile are nm -> nm/px
             // We invert the Y axis of the curve to have (m -> px / m)
             let mut red_disp_curve: Curve = Default::default();
-            let _ = red_disp_curve.load_slice_dat("src/instrument_model/dispersionRed.csv", i);
+            let _ = red_disp_curve.load_slice_dat(&DataFileManager::data_file(&"dispersionRed.csv".to_string()), i);
             let _ = red_disp_curve.extend_right();
             let _ = red_disp_curve.extend_left();
             let _ = red_disp_curve.scale_axis(XAxis, 1e-9);
@@ -168,7 +214,7 @@ impl InstrumentModel {
             //println!("RED DISP CURVE {:?}", red_disp_curve);
 
             let mut red_repx_curve: Curve = Default::default();
-            let _ = red_repx_curve.load_slice_dat("src/instrument_model/pxResolutionRed.csv", i);
+            let _ = red_repx_curve.load_slice_dat(&DataFileManager::data_file(&"pxResolutionRed.csv".to_string()), i);
             let _ = red_repx_curve.extend_right();
             let _ = red_repx_curve.extend_left();
             let _ = red_repx_curve.scale_axis(XAxis, 1e-9);
@@ -187,6 +233,9 @@ impl InstrumentModel {
             let _ = instrument_model.red_px2w.push(red_px2w_curve.clone());
             //println!("PX2WL {:?}", red_px2w_curve);
         }
+
+        //instrument_model.properties.config = ConfigManager::get("instrument".into());
+
         return instrument_model;
     }
     // Getter functions
@@ -353,10 +402,10 @@ impl InstrumentModel {
             let offset = (i as i32 - half_width as i32) as f64 * dx;
             let x = x0 + offset;
             let weight = (-half_prec * offset * offset).exp();
-            let notNanX = NotNan::new(x).expect("x should not be NaN");
-            let dy = curve.get_point(notNanX) * weight;
+            let not_nan_x = NotNan::new(x).expect("x should not be NaN");
+            let dy = curve.get_point(not_nan_x) * weight;
             //println!("CURVE BOUNDS: left: {}, right: {}", curve.get_oob_left(), curve.get_oob_right());
-            //println!("x: {}, nx: {} dy: {}", x, notNanX, dy);
+            //println!("x: {}, nx: {} dy: {}", x, not_nan_x, dy);
             y += dy;
             scale += weight;
         }
