@@ -20,12 +20,9 @@
 //
 
 use ordered_float::NotNan;
-//use std::fs::File;
-//use std::io::Read;
 use serde_yaml; 
 use serde_yaml::Value; // this is for the YAML nodes as a generic type
 use ordered_float::Pow;
-//use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 
 use crate::spectrum::*;
@@ -63,7 +60,6 @@ impl DetectorSpec {
             pixel_side: 15e-6,
             read_out_noise: 0.0,
             gain: 1.0,
-            //q_e: 1.0, -> is now a curve in Detector
         };
 
         spec.deserialize(); // override with values from YAML if they exist
@@ -189,10 +185,14 @@ pub struct Detector {
     properties: DetectorProperties,
     detector: DetectorSpec,
 
-    q_e: Curve,
+    //q_e: Curve, I THINK THE QUANTUM EFFICIENCY IS INCLUDED IN THE TRANSMISSION CURVE, REVIEW AND UNCOMMENT IF NECESSARY
     exposure_time: f64,
-    photon_flux_per_pixel: Spectrum,  // ph / (px m^2 s)
-    photons_per_pixel: Spectrum,      // ph/px
+    obj_photon_flux_per_pixel: Spectrum,  // ph / (px m^2 s)
+    sky_photon_flux_per_pixel: Spectrum,  // ph / (px m^2 s)
+    obj_photons_per_pixel: Spectrum,      // ph/px
+    sky_photons_per_pixel: Spectrum,      // ph/px
+    obj_electrons_per_pixel: Spectrum,    // e/px
+    sky_electrons_per_pixel: Spectrum,    // e/px
     electrons_per_pixel: Spectrum,    // e/px
     signal: Spectrum,                 // c
 
@@ -209,15 +209,17 @@ impl Detector {
             properties,
             detector: Default::default(),
 
-            q_e: Default::default(),
+            //q_e: Default::default(),
             exposure_time: 3600.0,
-            photon_flux_per_pixel: Default::default(),
-            photons_per_pixel: Default::default(),
+            obj_photon_flux_per_pixel: Default::default(),
+            sky_photon_flux_per_pixel: Default::default(),
+            obj_photons_per_pixel: Default::default(),
+            sky_photons_per_pixel: Default::default(),
+            obj_electrons_per_pixel: Default::default(),
+            sky_electrons_per_pixel: Default::default(),
             electrons_per_pixel: Default::default(),
             signal: Default::default(),
         };
-
-        //detector.properties.config = ConfigManager::get("detectors".into());
 
         return detector;
     }
@@ -234,11 +236,9 @@ impl Detector {
         return self.detector.clone();
     }
 
-
-    //pub fn set_pixel_photon_flux(&mut self, flux: Spectrum, slice: usize, arm: InstrumentArm) {
-    pub fn set_pixel_photon_flux(&mut self, flux: Spectrum) {
-        self.photon_flux_per_pixel.assign(&flux.get_curve());
-        //self.recalculate(slice, arm);
+    pub fn set_pixel_photon_flux(&mut self, flux_obj: Spectrum, flux_sky: Spectrum) {
+        self.obj_photon_flux_per_pixel.assign(&flux_obj.get_curve());
+        self.sky_photon_flux_per_pixel.assign(&flux_sky.get_curve());
         self.recalculate();
     }
 
@@ -246,20 +246,20 @@ impl Detector {
         self.exposure_time = t
     }
 
-    pub fn set_detector(&mut self, det: String) -> bool {  // CHANGE
+    pub fn set_detector(&mut self, det: String) -> bool {  // IMPORTANT: CHANGE IF THE Q_E CURVE IS SEPARATED FROM THE TRANSMISSION CURVE
 
-        if det == "ccd231_84_0_s77".to_string() {
-            self.q_e.load_curve(&DataFileManager::data_file(&"NBB_QE.csv".to_string())).unwrap();
-            self.q_e.scale_axis(XAxis, 1e-9); // X axis was in nm
-        } else if det == "ccd231_84_0_h69".to_string() {
-            self.q_e.load_curve(&DataFileManager::data_file(&"ML15_QE.csv".to_string())).unwrap();
-            self.q_e.scale_axis(XAxis, 1e-9); // X axis was in nm
-        } else if det == "ccd231_84_0_h69+dd".to_string() {
-            self.q_e.load_curve(&DataFileManager::data_file(&"ML15+DD_QE".to_string())).unwrap(); // For HR-R
-            self.q_e.scale_axis(XAxis, 1e-9); // X axis was in nm
-        } else {
-            eprintln!("Unknown detector {}; expected 'ccd231_84_0_s77', 'ccd231_84_0_h69' or 'ccd231_84_0_h69'.", det);
-        }
+        //if det == "ccd231_84_0_s77".to_string() {
+        //    self.q_e.load_curve(&DataFileManager::data_file(&"NBB_QE_2.csv".to_string())).unwrap();
+        //    self.q_e.scale_axis(XAxis, 1e-9); // X axis was in nm
+        //} else if det == "ccd231_84_0_h69".to_string() {
+        //    self.q_e.load_curve(&DataFileManager::data_file(&"ML15_QE_2.csv".to_string())).unwrap();
+        //    self.q_e.scale_axis(XAxis, 1e-9); // X axis was in nm
+        //} else if det == "ccd231_84_0_h69+dd".to_string() {
+        //    self.q_e.load_curve(&DataFileManager::data_file(&"ML15+DD_QE".to_string())).unwrap(); // For HR-R
+        //    self.q_e.scale_axis(XAxis, 1e-9); // X axis was in nm
+        //} else {
+        //    eprintln!("Unknown detector {}; expected 'ccd231_84_0_s77', 'ccd231_84_0_h69' or 'ccd231_84_0_h69'.", det);
+        //}
         
         let it = self.properties.detectors.get(&det);
 
@@ -291,42 +291,36 @@ impl Detector {
         return qd;
     }
 
-    //pub fn recalculate(&mut self, slice: usize, arm: InstrumentArm) {  
     pub fn recalculate(&mut self) { 
         if self.detector == DetectorSpec::default() {
             println!("Detector is not set.");
         }
 
         let inv_gain = 1.0 / self.detector.gain;
-
         // Compute electrons in each pixel by means of the exposure time
-        //println!("flux per pixel: {:?}", self.photon_flux_per_pixel);
-        self.photons_per_pixel.from_existing(&self.photon_flux_per_pixel.get_curve(), self.exposure_time * self.detector.pixel_side * self.detector.pixel_side);
-
+        self.obj_photons_per_pixel.from_existing(&self.obj_photon_flux_per_pixel.get_curve(), self.exposure_time * self.detector.pixel_side * self.detector.pixel_side);
+        self.sky_photons_per_pixel.from_existing(&self.sky_photon_flux_per_pixel.get_curve(), self.exposure_time * self.detector.pixel_side * self.detector.pixel_side);
         // Compute number of electrons by means of the quantum efficiency
-        self.electrons_per_pixel.from_existing(&self.photons_per_pixel.get_curve(), 1.0);
-        //self.electrons_per_pixel.get_curve_mut().multiply(&self.q_e);
-
+        self.obj_electrons_per_pixel.from_existing(&self.obj_photons_per_pixel.get_curve(), 1.0); // y_units = gain?
+        self.sky_electrons_per_pixel.from_existing(&self.sky_photons_per_pixel.get_curve(), 1.0); // y_units = gain?
         // Turn this into counts
-        self.signal.from_existing(&self.electrons_per_pixel.get_curve(), inv_gain);
-    
+        self.signal.from_existing(&self.obj_electrons_per_pixel.get_curve(), inv_gain);
         // Add dark electrons to the electron-per-pixel curve
+        self.electrons_per_pixel.from_existing(&self.obj_electrons_per_pixel.get_curve(), 1.0); 
+        self.electrons_per_pixel.add(&self.sky_electrons_per_pixel.get_curve());
         self.electrons_per_pixel.add(self.dark_electrons(DETECTOR_TEMPERATURE));
-        //println!();
-        //println!("ELECTRONS: {:?}", self.electrons_per_pixel);
-        println!("DARK ELECTRONS: {:?}", self.dark_electrons(DETECTOR_TEMPERATURE) )
     }
 
-    pub fn signal_px(&self, px: NotNan<f64>) -> f64 {
-        return self.signal.get_point(px);
+    pub fn signal_value(&self, wl: NotNan<f64>) -> f64 {
+        return self.signal.get_point(wl);
     }
 
     pub fn signal_crv(&self) -> Spectrum {
         return self.signal.clone();
     }
 
-    pub fn electrons_px(&self, px: NotNan<f64>) -> f64 {
-        return self.electrons_per_pixel.get_point(px);
+    pub fn electrons_value(&self, wl: NotNan<f64>) -> f64 {
+        return self.electrons_per_pixel.get_point(wl);
     }
 
     pub fn electrons_crv(&self) -> Spectrum {
@@ -340,7 +334,7 @@ impl Detector {
         return self.detector.read_out_noise / self.detector.gain;
     }
 
-    pub fn noise_px(&self, px: NotNan<f64>) -> f64 {
+    pub fn noise_value(&self, wl: NotNan<f64>) -> f64 {
         if self.detector == DetectorSpec::default() {
             panic!("Detector is not set.");
         }
@@ -349,7 +343,7 @@ impl Detector {
         let inv_gain_2 = 1.0 / (self.detector.gain * self.detector.gain);
         ron2 *= ron2;
     
-        return (inv_gain_2 * self.electrons_px(px) + ron2).sqrt(); // MISSING THE RANDOM NOISE
+        return (inv_gain_2 * self.electrons_value(wl) + ron2).sqrt(); // MISSING THE RANDOM NOISE
     }
 
     pub fn noise_crv(&self) -> Spectrum { 
@@ -369,13 +363,11 @@ impl Detector {
             *y = y.sqrt();  // Modify the value directly
         }
     
-        println!("ron2: {:?}", ron2);
-        println!("ELECTRON PX: {:?}", self.electrons_px(NotNan::new(6.55e-7).unwrap()));
         return elec;
     }
 
-    pub fn snr_px(&self, px: NotNan<f64>) -> f64 { 
-        return self.signal.get_point(px) / self.noise_px(px);
+    pub fn snr_value(&self, wl: NotNan<f64>) -> f64 { 
+        return self.signal.get_point(wl) / self.noise_value(wl);
     }
 
     pub fn snr_crv(&mut self) -> &mut Curve { 
@@ -389,6 +381,8 @@ impl Detector {
         return snr;
     }
 
+    
+
     // getter functions
     pub fn get_properties(&self) -> &DetectorProperties {
         &self.properties
@@ -396,17 +390,29 @@ impl Detector {
     pub fn get_detector(&self) -> &DetectorSpec {
         &self.detector
     }
-    pub fn get_q_e(&self) -> &Curve {
-        &self.q_e
-    }
+    //pub fn get_q_e(&self) -> &Curve {
+    //    &self.q_e
+    //}
     pub fn get_exposure_time(&self) -> &f64 {
         &self.exposure_time
     }
-    pub fn get_photon_flux_per_pixel(&self) -> &Spectrum {
-        &self.photon_flux_per_pixel
+    pub fn get_obj_photon_flux_per_pixel(&self) -> &Spectrum {
+        &self.obj_photon_flux_per_pixel
     }
-    pub fn get_photons_per_pixel(&self) -> &Spectrum {
-        &self.photons_per_pixel
+    pub fn get_sky_photon_flux_per_pixel(&self) -> &Spectrum {
+        &self.sky_photon_flux_per_pixel
+    }
+    pub fn get_obj_photons_per_pixel(&self) -> &Spectrum {
+        &self.obj_photons_per_pixel
+    }
+    pub fn get_sky_photons_per_pixel(&self) -> &Spectrum {
+        &self.sky_photons_per_pixel
+    }
+    pub fn get_obj_electrons_per_pixel(&self) -> &Spectrum {
+        &self.obj_electrons_per_pixel
+    }
+    pub fn get_sky_electrons_per_pixel(&self) -> &Spectrum {
+        &self.sky_electrons_per_pixel
     }
     pub fn get_electrons_per_pixel(&self) -> &Spectrum {
         &self.electrons_per_pixel

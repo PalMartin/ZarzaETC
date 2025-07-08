@@ -29,8 +29,11 @@ use crate::detector::*;
 use crate::curve::CurveAxis::*;
 use crate::data_file_manager::*;
 use crate::spectrum::SpectrumAxisOperations;
+use std::arch::aarch64::float64x1x3_t;
 use std::collections::BTreeMap;
 //use ordered_float::Pow;
+use std::cmp;
+
 
 #[derive(Clone, Debug)]
 pub struct SimulationParams {
@@ -113,11 +116,13 @@ impl SimulationParams {
     }
 }
 
+#[derive(Clone)]
 pub struct Simulation {
     input: Spectrum,
     filter: Curve,
     filter_equiv_bw: f64,
     sky: Spectrum,
+    obj: Spectrum,
     sky_model: SkyModel,
     tarsis_model: InstrumentModel,
     det: Detector,
@@ -169,34 +174,36 @@ impl Simulation {
         &mut self.params
     }
 
-    pub fn new(filter_path: &String) -> Simulation {
-        // FILTER PATH: the path of the desired filter (cousins_r, gjc or sdss):
-        // Generic_Cousins_R.csv; Generic_Johnson_UBVRIJHKL.U.csv; Generic_Johnson_UBVRIJHKL.B.csv; 
-        // Generic_Johnson_UBVRIJHKL.V.csv; Generic_Johnson_UBVRIJHKL.R.csv; Generic_Johnson_UBVRIJHKL.I.csv; 
-        // SLOAN_SDSS.u.csv; SLOAN_SDSS.g.csv; SLOAN_SDSS.r.csv; SLOAN_SDSS.i.csv
-        let mut simulation = Simulation {
+    pub fn new() -> Simulation {
+        let simulation = Simulation {
             input: Spectrum::default(),
             filter: Curve::default(),
             filter_equiv_bw: 0.0,
             sky: Spectrum::default(),
+            obj: Spectrum::default(),
             sky_model: SkyModel::new(),
             tarsis_model: InstrumentModel::new(),
             det: Detector::new(),
             params: SimulationParams::new(),
         };
 
-        let _ = simulation.filter.load_curve(&DataFileManager::data_file(&filter_path.to_string())).unwrap();
-        simulation.filter.scale_axis(XAxis, 1e-10); // X axis was in angstrom
-        simulation.filter.invert_axis(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap()); // To frequency
-        simulation.filter_equiv_bw = simulation.filter.integral();
-
         return simulation;
+    }
+
+    pub fn set_filter(&mut self, filter_path: &String) {
+        // FILTER PATH: the path of the desired filter (cousins_r, gjc or sdss):
+        // Generic_Cousins_R.csv; Generic_Johnson_UBVRIJHKL.U.csv; Generic_Johnson_UBVRIJHKL.B.csv; 
+        // Generic_Johnson_UBVRIJHKL.V.csv; Generic_Johnson_UBVRIJHKL.R.csv; Generic_Johnson_UBVRIJHKL.I.csv; 
+        // SLOAN_SDSS.u.csv; SLOAN_SDSS.g.csv; SLOAN_SDSS.r.csv; SLOAN_SDSS.i.csv
+
+        let _ = self.filter.load_curve(&DataFileManager::data_file(&filter_path.to_string())).unwrap();
+        self.filter.scale_axis(XAxis, 1e-10); // X axis was in angstrom
+        self.filter.invert_axis(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap()); // To frequency
+        self.filter_equiv_bw = self.filter.integral();
     }
 
     pub fn set_input_user(&mut self, spec: Spectrum) {
         self.input = spec;
-        // multiply by sky transmission
-
     }
 
     pub fn set_input_template(&mut self, template_path: &String) { // CHECK UNIT CONVERSION!!
@@ -215,6 +222,7 @@ impl Simulation {
         //             7.4309394e7 W / (m^2 A sr)  
         let _ = spec.load_curve(&DataFileManager::data_file(&template_path.to_string())).unwrap(); // erg s-1 cm-2 A-1 -> CHECK IF ITS REAL FOR EVERY TEMPLATE
         let _ = spec.scale_axis_factor(YAxis, 7.4309394e7); // To SI units  -> FIX THE ANGULAR UNITS: THIS IS CONSIDERING ALL THE EMISSION OF THE GALAXY IS PUNTUAL
+        let _ = spec.scale_axis_factor(YAxis, 0.000625); // TO OBTAIN THE FLUX IN A SINGLE PIXEL CONSIDERING THAT IT FILLS THE WHOLE DETECTOR UNIFORMINGLY
         let _ = spec.scale_axis_factor(XAxis, 1e-10); // Convert angstrom to meters
         self.input = spec; // spectra in radiance units (J s-1 m-2 m-1 sr-1)
 
@@ -247,8 +255,10 @@ impl Simulation {
     }
 
     // FIX UNITS IN SET_INPUT_LINE
-    pub fn set_input_line(&mut self, central_wl: NotNan<f64>, int_flux: f64, fwhm: f64, cont_flux: f64, line_type: &str, res: &str, arm: InstrumentArm) {
-        // wl in angstrom and input fluxes must be given in phot/s/cm2/angstrom
+    // OJO, ARREGLAR: HAY QUE PONER LA OPCIÓN DE A QUE LAMBDA CORTAR LA EMISIÓN DEL CONTINUO (ROYO CONSIDERAR UNA LÍNEA ACOMPAÑADA DEL CONTINUO DE UNA LAMBDA ESPECIFICA HASTA OTRA)
+    pub fn set_input_line(&mut self, central_wl: NotNan<f64>, int_flux: f64, fwhm: f64, cont_flux: f64, line_type: &str, res: &str, arm: InstrumentArm, wl_min: f64, wl_max: f64) {
+        // wl in angstrom and input fluxes must be given in phot/s/cm2/angstrom, same units as the galaxy templates
+
         let mut line = BTreeMap::new();
         let mut sigma = 0.0;
         if res == String::from("Resolved") {
@@ -268,52 +278,64 @@ impl Simulation {
         } else {
             panic!("Unexpected type format for {}. Expected 'Resolved' or 'Unresolved'.", res)
         }
-        let wl_min = central_wl - 5.0 * sigma;
-        let wl_max = central_wl + 5.0 * sigma;
-        let num_points = 1000; // The unit test dont work if there are less points
+        //let wl_min = central_wl - 5.0 * sigma;
+        //let wl_max = central_wl + 5.0 * sigma;
+        //let num_points = 1000; // The unit test dont work if there are less points
+
+        let num_points = 500;
+        for i in 0..num_points {
+            let wl_val = wl_min + (i as f64) * (wl_max - wl_min) / (num_points as f64 - 1.0);
+            let wl = NotNan::new(wl_val).expect("wl should not be NaN");
+            line.insert(wl, cont_flux);
+        }
     
         match line_type {
             "emission_line" => {
                 for i in 0..num_points {
-                    let wl_val: f64 = *(wl_min + (i as f64) * *(((wl_max - wl_min) / (num_points as f64 - 1.0))));  
+                    let wl_val: f64 = wl_min + (i as f64) * ((wl_max - wl_min) / (num_points as f64 - 1.0));  
                     let wl = NotNan::new(wl_val).expect("x should not be NaN");
     
                     let flux = int_flux * (-(f64::from(wl) - f64::from(central_wl)).powf(2.0) / (2.0 * sigma.powf(2.0))).exp();
                     line.insert(wl, cont_flux + flux);
                     line.insert(central_wl, int_flux + cont_flux); 
                 }
-                *self.input.get_curve_mut().get_map_mut() = line;
+                //*self.input.get_curve_mut().get_map_mut() = line;
             }
             "absorption_line" => {
                 for i in 0..num_points {
-                    let wl_val: f64 = *(wl_min + (i as f64) * *(((wl_max - wl_min) / (num_points as f64 - 1.0))));  
+                    let wl_val: f64 = wl_min + (i as f64) * ((wl_max - wl_min) / (num_points as f64 - 1.0));  
                     let wl = NotNan::new(wl_val).expect("x should not be NaN");
     
                     let flux = -int_flux * (-(f64::from(wl) - f64::from(central_wl)).powf(2.0) / (2.0 * sigma.powf(2.0))).exp();
                     line.insert(wl, cont_flux - flux);
                     line.insert(central_wl, int_flux + cont_flux);
                 }
-                *self.input.get_curve_mut().get_map_mut() = line;
+                //*self.input.get_curve_mut().get_map_mut() = line;
             }
             _ => {
                 eprintln!("Warning: Unknown line type '{}'. Expected: 'emission_line' or 'absorption_line'.", line_type);
             }
         }
+
+        let mut spec = Spectrum::default();
+        *spec.get_curve_mut().get_map_mut() = line.clone();
+        let _ = spec.scale_axis_factor(YAxis, 7.4309394e7); // To SI units  -> FIX THE ANGULAR UNITS: THIS IS CONSIDERING ALL THE EMISSION OF THE GALAXY IS PUNTUAL
+        let _ = spec.scale_axis_factor(YAxis, 0.000625); // TO OBTAIN THE FLUX IN A SINGLE PIXEL CONSIDERING THAT IT FILLS THE WHOLE DETECTOR UNIFORMINGLY
+        let _ = spec.scale_axis_factor(XAxis, 1e-10); // Convert angstrom to meters
+        self.input = spec; // spectra in radiance units (J s-1 m-2 m-1 sr-1)
+
+
     }
 
     pub fn normalize_to_r_mag(&mut self, mag_r: f64) { // ONLY FOR WHEN FILTER -> COUSINS_R IS SELECTED
         let mut filtered = Spectrum::default();
         filtered.from_existing(&self.input.get_curve(), 1.0);
         filtered.invert_axis_spec(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap());
-        //println!("FILTERED: {:?}", filtered.get_curve().get_curve());
         filtered.multiply(&self.filter); 
         
         let desired_sb = surface_brightness_ab2freq_radiance(mag_r);
-        //println!("desired_sb {}:", desired_sb);
 
         let mean_sb = filtered.integral() / self.filter_equiv_bw;
-        //println!("cousins_re_quiv_bw {}:", self.cousins_re_quiv_bw);
-        //println!("mean_sb {}:", mean_sb);
 
         self.input.scale_axis_factor(YAxis, desired_sb / mean_sb);
     }
@@ -341,8 +363,8 @@ impl Simulation {
         }
 
         // Update sky spectrum
-        self.sky = self.sky_model.make_sky_spectrum(&self.input);
-        //println!("INPUT: {:?}", &self.input);
+        self.sky = self.sky_model.make_sky_spectrum(&self.input).0;
+        self.obj = self.sky_model.make_sky_spectrum(&self.input).1;
 
         // Update detector config
         self.det.set_exposure_time(params.dit * params.ndit as f64)
@@ -363,12 +385,12 @@ impl Simulation {
 
         // Set coating
         *tarsis_prop.get_coating_mut() = self.det.get_spec().get_coating().clone();
+
+        self.tarsis_model.set_input(arm.clone(), self.obj.clone());
+        let flux_obj = self.tarsis_model.make_pixel_photon_flux(self.params.slice);       
         self.tarsis_model.set_input(arm.clone(), self.sky.clone());
-        //println!("sky: {:?}", self.sky);
-        let flux = self.tarsis_model.make_pixel_photon_flux(self.params.slice);
-        //println!("flux: {:?}", flux);
-        //self.det.set_pixel_photon_flux(flux, self.params.slice, arm);        
-        self.det.set_pixel_photon_flux(flux);      
+        let flux_sky = self.tarsis_model.make_pixel_photon_flux(self.params.slice);     
+        self.det.set_pixel_photon_flux(flux_obj, flux_sky);      
     }
 
     pub fn read_out_noise(&self) -> f64 {
@@ -397,55 +419,165 @@ impl Simulation {
         return self.tarsis_model.wavelength_to_pix_crv(arm, self.params.slice).unwrap();
     }
 
-    pub fn texp_from_snr_px(&self, px: NotNan<f64>, arm: InstrumentArm) -> f64 { // CHECK EXPRESSION
-        let n = self.det.get_photon_flux_per_pixel().get_point(px) * self.det.get_detector().get_pixel_side() * self.det.get_detector().get_pixel_side() * self.det.get_q_e().get_point(px) / self.det.get_detector().get_gain();
-        return self.det.noise_px(px) * self.params.snr / n;
+    pub fn signal(self, wl: NotNan<f64>) -> f64 {
+        return self.det.signal_value(wl);
     }
 
-    pub fn texp_from_snr_crv(&mut self, arm: InstrumentArm) -> f64 { // CHECK EXPRESSION
-        let mut texp_crv = BTreeMap::new();
-        let mut n = 0.0;
-        let mut texp_px = 0.0;
-        for (x, y) in self.det.noise_crv().get_curve().get_map().iter() {
-            n = self.det.get_photon_flux_per_pixel().get_point(*x) * self.det.get_detector().get_pixel_side() * self.det.get_detector().get_pixel_side() * self.det.get_q_e().get_point(*x) / self.det.get_detector().get_gain();
-            texp_crv.insert(*x, *y * self.params.snr / n);
+    pub fn noise(self, wl: NotNan<f64>) -> f64 {
+        return self.det.noise_value(wl);
+    }
+
+    pub fn electrons(self, wl: NotNan<f64>) -> f64 {
+        return self.det.electrons_value(wl);
+
+    }
+
+    // Returns DIT or NDIT depending in what the user providad (first element of the touple), as well as INT (=DIT*NDIT) (second element of the touple)
+    pub fn texp_from_snr(&mut self, snr: f64, lambda_ref: NotNan<f64>, input: f64) -> (f64, f64) { // CHECK, ITS WRONG
+
+        let inv_gain = 1.0 / self.det.get_detector().get_gain();
+
+        let obj = self.det.get_obj_photon_flux_per_pixel().get_curve().get_point(lambda_ref) * self.det.get_detector().get_pixel_side() * self.det.get_detector().get_pixel_side() * 1.0 * inv_gain;
+        let sky = self.det.get_sky_photon_flux_per_pixel().get_curve().get_point(lambda_ref) * self.det.get_detector().get_pixel_side() * self.det.get_detector().get_pixel_side() * 1.0 * inv_gain;
+
+        let a = (obj).powf(2.0);
+        let b = snr * snr * ((obj) + (sky) + (self.det.dark_electrons(DETECTOR_TEMPERATURE) / self.det.get_exposure_time()));
+        let c = snr * snr * self.read_out_noise() * self.read_out_noise();
+
+        let t = (b + ((b * b) + (4.0 * a * c)).sqrt()) / (2.0 * a);
+
+        return (t / input, t);
+
+
+    }
+
+    pub fn lim_mag(&mut self, lambda_ref: NotNan<f64>, arm: InstrumentArm) -> f64 { 
+        //let px = self.tarsis_model.wavelength_to_px_val(arm, self.params.slice, lambda_ref).unwrap();
+        // Total throughput: sky extinction + instrument transmission (telescope + instrument + QE) (CONSIDERED QE ADDED INTO THE TRANSMISSION CURVE)
+        let ext_frac = mag2frac(self.get_sky_model().get_sky_ext().get_point(lambda_ref) * self.get_sky_model().get_airmass());
+        let trans_tot: f64;
+        match arm { // THIS IS CONSIDERING THE QE IS ADDED INTO THE TRANSMISSION CURVE
+            InstrumentArm::RedArm => {
+                trans_tot = self.get_tarsis_model().get_red_ml15().get_point(lambda_ref);
+            },
+            InstrumentArm::BlueArm => {
+                trans_tot = self.get_tarsis_model().get_blue_nbb().get_point(lambda_ref); // USE ONLY NBB OR CONSIDER ML15?
+            },
         }
-        let texp = texp_crv.values().cloned().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(0.0);
-        return texp; 
-    }
 
-    pub fn lim_flux(&self, px: NotNan<f64>, fwhm: f64) -> f64 { // CHECK FWHM OF THE LINE
-        let mut ron2 = self.det.read_out_noise() * self.det.read_out_noise();
-        let noise = (ron2 + self.sky.get_point(px) * (self.params.dit * self.params.ndit as f64)).sqrt(); // ASSUMPTION: CONTRIBUTION OF THE EMISSION LINE TO THE NOISE IS NEGLIGIBLE
-        let flux = self.params.snr * noise * fwhm / (self.params.dit * self.params.ndit as f64); // in ADU/s
-        return flux * self.det.get_detector().get_gain() / self.det.get_q_e().get_point(px) // in fotons/s
-    }
-
-    pub fn lim_mag(&self, px: NotNan<f64>, fwhm: f64) -> f64 { // CHECK -> I calculated this from the limiting (line) flux
-        return -2.5 * self.lim_flux(px, fwhm).log10() - 48.6; // AB MAGNITUDE
-    }
-
-    pub fn rad_vel_unc(&mut self, central_wl: NotNan<f64>, fwhm: f64, px: NotNan<f64>, res: &str, arm: InstrumentArm) -> f64 {
-        let mut sigma = 0.0;
-        if res == String::from("Resolved") { 
-            sigma = STD2FWHM / fwhm; // FWHM in Ángstrom​​
-        } 
-        else if res == String::from("Unresolved") {
-            let mut fwhm_ins = Curve::default();
-            match arm {
-                InstrumentArm::RedArm => {
-                    fwhm_ins = self.tarsis_model.get_red_repx()[self.params.slice].clone();
-                }
-                InstrumentArm::BlueArm => {
-                    fwhm_ins = self.tarsis_model.get_blue_repx()[self.params.slice].clone();
-                }
+        let res_in_wl: f64;
+        match arm {
+            InstrumentArm::BlueArm => {
+                let res_in_px = (self.get_tarsis_model().get_blue_repx()[self.params.slice].get_point(NotNan::new(lambda_ref.into_inner()).expect("x should not be NaN"))).ceil();
+                res_in_wl =  self.get_tarsis_model().get_blue_px2w()[self.params.slice].get_point(NotNan::new(res_in_px).expect("x should not be NaN")) - self.get_tarsis_model().get_blue_px2w()[self.params.slice].get_point(NotNan::new(0.0).expect("x should not be NaN"));
             }
-            sigma = STD2FWHM / fwhm_ins.get_point(central_wl); 
-        } else {
-            panic!("Unexpected type format for {}. Expected 'Resolved' or 'Unresolved'.", res)
+            InstrumentArm::RedArm => {
+                let res_in_px = (self.get_tarsis_model().get_red_repx()[self.params.slice].get_point(NotNan::new(lambda_ref.into_inner()).expect("x should not be NaN"))).ceil();
+                res_in_wl = self.get_tarsis_model().get_red_px2w()[self.params.slice].get_point(NotNan::new(res_in_px).expect("x should not be NaN")) - self.get_tarsis_model().get_red_px2w()[self.params.slice].get_point(NotNan::new(0.0).expect("x should not be NaN"));
+            }
         }
-        return SPEED_OF_LIGHT * fwhm / *((central_wl * self.det.snr_px(px))); // CHECK IF THIS EXPRESSION IS OK 
+
+        let area = CAHA_APERTURE_AREA;
+        let n = ext_frac * trans_tot;
+
+        let h = PLANCK_CONSTANT;
+        let c = SPEED_OF_LIGHT;
+        let lambda = lambda_ref.into_inner(); // in meters
+        let d_lambda = res_in_wl; // in meters
+        let f_0 = 3.631e-23; // AB zeropoint in W·m⁻²·Hz⁻¹
+        let f_lambda = f_0 * c / (lambda * lambda); // Convert to W·m⁻²·m⁻¹
+
+        let energy_per_photon = h * c / lambda;
+        let total_time = self.params.ndit as f64 * self.params.dit;
+
+        let k = f_lambda * d_lambda * area * total_time * n / energy_per_photon; // in counts (Signal and noise are in couns so this must also be in counts: in n is the QE so by converting to photons we automatically get counts)
+
+        let mag_lim = -2.5 * ((self.params.snr * (self.params.snr * (self.params.snr * self.params.snr + (4.0 * (self.det.noise_value(lambda_ref) * self.det.noise_value(lambda_ref) - self.det.signal_value(lambda_ref)) / k)).sqrt())) / (2.0 * k)).log10();
+
+        return mag_lim;
     }
+
+    pub fn lim_flux(&mut self, lambda_ref: NotNan<f64>, arm: InstrumentArm) -> f64 {  // IN  W·m⁻²·m⁻¹
+        // Total throughput: sky extinction + instrument transmission (telescope + instrument + QE) (CONSIDERED QE ADDED INTO THE TRANSMISSION CURVE)
+        let ext_frac = mag2frac(self.get_sky_model().get_sky_ext().get_point(lambda_ref) * self.get_sky_model().get_airmass());
+        let trans_tot: f64;
+        match arm { // THIS IS CONSIDERING THE QE IS ADDED INTO THE TRANSMISSION CURVE
+            InstrumentArm::RedArm => {
+                trans_tot = self.get_tarsis_model().get_red_ml15().get_point(lambda_ref);
+            },
+            InstrumentArm::BlueArm => {
+                trans_tot = self.get_tarsis_model().get_blue_nbb().get_point(lambda_ref); // USE ONLY NBB OR CONSIDER ML15?
+            },
+        }
+
+        let res_in_wl: f64;
+        match arm {
+            InstrumentArm::BlueArm => {
+                let res_in_px = (self.get_tarsis_model().get_blue_repx()[self.params.slice].get_point(NotNan::new(lambda_ref.into_inner()).expect("x should not be NaN"))).ceil();
+                res_in_wl =  self.get_tarsis_model().get_blue_px2w()[self.params.slice].get_point(NotNan::new(res_in_px).expect("x should not be NaN")) - self.get_tarsis_model().get_blue_px2w()[self.params.slice].get_point(NotNan::new(0.0).expect("x should not be NaN"));
+            }
+            InstrumentArm::RedArm => {
+                let res_in_px = (self.get_tarsis_model().get_red_repx()[self.params.slice].get_point(NotNan::new(lambda_ref.into_inner()).expect("x should not be NaN"))).ceil();
+                res_in_wl = self.get_tarsis_model().get_red_px2w()[self.params.slice].get_point(NotNan::new(res_in_px).expect("x should not be NaN")) - self.get_tarsis_model().get_red_px2w()[self.params.slice].get_point(NotNan::new(0.0).expect("x should not be NaN"));
+            }
+        }
+
+        let area = CAHA_APERTURE_AREA;
+        let n = ext_frac * trans_tot;
+
+        let h = PLANCK_CONSTANT; // Planck constant in J·s
+        let c = SPEED_OF_LIGHT; // Speed of light in m/s
+        let lambda = lambda_ref.into_inner(); // in meters
+        let d_lambda = res_in_wl; // in meters
+
+        let energy_per_photon = h * c / lambda;
+        let total_time = self.params.ndit as f64 * self.params.dit;
+        let k = d_lambda * area * n * total_time / energy_per_photon; // counts per W·m⁻²·m⁻¹ (Signal and noise are in couns so this must also be in counts: in n is the QE so by converting to photons we automatically get counts)
+
+        //let k = area * n * self.params.ndit as f64 * self.params.dit;
+
+        let flux_lim = (self.params.snr * (self.params.snr + (self.params.snr * self.params.snr + (4.0 * (self.det.noise_value(lambda_ref) * self.det.noise_value(lambda_ref) - self.det.signal_value(lambda_ref)) / k)).sqrt())) / (2.0 * k);
+
+        return flux_lim;
+    }
+
+    pub fn rad_vel_unc(&mut self, arm: InstrumentArm, obj_size: f64) -> f64 { // change the object size specification when the spatial distribution is implemented
+        // only works if the input is an emission/absorption line generated with "set_input_line"
+        let tot: f64 = self.det.signal_crv().get_curve().get_map().values().sum();
+        let line_cntr = self.det.signal_crv().get_curve().get_map().iter().map(|(x, v)| x.into_inner() * (v / tot)).sum();
+        //println!("line cnt: {}", line_cntr);
+        let res_in_wl: f64;
+        match arm {
+            InstrumentArm::BlueArm => {
+                let res_in_px = (self.get_tarsis_model().get_blue_repx()[self.params.slice].get_point(NotNan::new(line_cntr).expect("x should not be NaN"))).ceil();
+                res_in_wl =  self.get_tarsis_model().get_blue_px2w()[self.params.slice].get_point(NotNan::new(res_in_px).expect("x should not be NaN")) - self.get_tarsis_model().get_blue_px2w()[self.params.slice].get_point(NotNan::new(0.0).expect("x should not be NaN"));
+            }
+            InstrumentArm::RedArm => {
+                let res_in_px = (self.get_tarsis_model().get_red_repx()[self.params.slice].get_point(NotNan::new(line_cntr).expect("x should not be NaN"))).ceil();
+                res_in_wl = self.get_tarsis_model().get_red_px2w()[self.params.slice].get_point(NotNan::new(res_in_px).expect("x should not be NaN")) - self.get_tarsis_model().get_red_px2w()[self.params.slice].get_point(NotNan::new(0.0).expect("x should not be NaN"));
+            }
+        }
+        //println!("RES: {}", res_in_wl);
+
+        let mut w : Vec<f64> = Vec::new();
+        let mut a_0 : Vec<f64> = Vec::new();
+        let mut noise : Vec<f64> = Vec::new();
+        for i in 0..SPECTRAL_PIXEL_LENGTH.round() as i32 {
+            let wl = self.tarsis_model.px_to_wavelength_val(arm, self.params.slice, NotNan::new(i as f64).expect("x should not be NaN")).unwrap();
+            w.push(wl * wl * self.det.signal_crv().get_curve().get_diff(NotNan::new(wl).expect("x should not be NaN")) * self.det.signal_crv().get_curve().get_diff(NotNan::new(wl).expect("x should not be NaN")) / (self.det.signal_value(NotNan::new(wl).expect("x should not be NaN")) + self.det.noise_value(NotNan::new(wl).expect("x should not be NaN"))));
+            a_0.push(self.det.signal_value(NotNan::new(wl).expect("x should not be NaN")));
+            noise.push(self.det.noise_value(NotNan::new(wl).expect("x should not be NaN")));
+        }
+        let W: f64 = w.into_iter().sum();
+        let A_0: f64 = a_0.into_iter().sum();
+        let N: f64 = noise.into_iter().sum();
+        let Q: f64 = W.sqrt() / A_0.sqrt();
+
+        let dv_rms: f64 = 0.5 * (res_in_wl + cmp::min(obj_size.ceil() as i32 , 4) as f64 + (SPEED_OF_LIGHT / (Q * (A_0 + N).sqrt()))); // 4 is the size of the spaxel side; need the size of the object as input (obj_size)
+
+        return dv_rms;
+    }
+
 
     // SPATIAL FLUX DISTRIBUTION
 

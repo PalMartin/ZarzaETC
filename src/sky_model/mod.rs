@@ -32,7 +32,7 @@ use crate::helpers::*;
 use crate::config_manager::*;
 use crate::data_file_manager::*;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct SkyProperties {
 
     pub config: Config,
@@ -42,9 +42,11 @@ pub struct SkyProperties {
     pub sky_extinction: String,
 }
 
+#[derive(Clone)]
 pub struct SkyModel {
-    properties: SkyProperties,
+    pub properties: SkyProperties,
     sky_spectrum: Spectrum,
+    obj_spectrum: Spectrum,
     sky_ext: Curve,
     moon_to_mag: Curve,
     airmass: f64,
@@ -104,13 +106,12 @@ impl SkyModel {
             properties,
 
             sky_spectrum: Default::default(),
+            obj_spectrum: Default::default(),
             sky_ext: Default::default(),
             moon_to_mag: Default::default(),
             airmass: 1.0,
             moon_fraction: 0.0,
         };
-
-        //sky_model.properties.config = ConfigManager::get("sky".into());
 
         sky_model.load_data();
         return sky_model;
@@ -118,6 +119,9 @@ impl SkyModel {
 
     pub fn get_sky_spectrum_mut(&mut self) -> &mut Spectrum {
         &mut self.sky_spectrum
+    }
+    pub fn get_obj_spectrum_mut(&mut self) -> &mut Spectrum {
+        &mut self.obj_spectrum
     }
     pub fn get_sky_ext_mut(&mut self) -> &mut Curve {
         &mut self.sky_ext
@@ -187,30 +191,30 @@ impl SkyModel {
         self.set_airmass(1.0 / z_rad.cos())
     }
 
-    pub fn make_sky_spectrum(&self, object: &Spectrum) -> Spectrum {
-        let mut spectrum: Spectrum = Default::default();
+    pub fn make_sky_spectrum(&self, object: &Spectrum) -> (Spectrum, Spectrum) {
+        let mut spectrum_sky: Spectrum = Default::default();
+        let mut spectrum_obj: Spectrum = Default::default();
         let sky_ext = &self.sky_ext;
         let sky_bg = &self.sky_spectrum;
         let moon = &self.moon_to_mag;
  
-        spectrum.from_existing(&sky_bg.get_curve(), 1.0);
-        spectrum.scale_axis_factor(YAxis, self.airmass);
-        println!("SKY SPECTRUM: {}", spectrum.get_point(NotNan::new(6.55e-7).unwrap()));
-        spectrum.add(&object.get_curve());
-        println!("OBJ SPECTRUM: {}", spectrum.get_point(NotNan::new(6.55e-7).unwrap()));
+        spectrum_sky.from_existing(&sky_bg.get_curve(), 1.0);
+        spectrum_sky.scale_axis_factor(YAxis, self.airmass);
+        spectrum_obj.from_existing(&object.get_curve(), 1.0);
 
-        let xp = spectrum.x_points();
+        let xp = spectrum_sky.x_points();
         for p in xp {
             let ext_frac = mag2frac(sky_ext.get_point(p) * self.airmass);
-            if p == 6.55e-7 {
-                println!("EXT_FRAC {}", ext_frac);
-            }
-            
             // Apply the model: I_sky = extinction(airmass) * (object + moon + background * airmass)
-            spectrum.set(p, ext_frac * (spectrum.get_point(p) + surface_brightness_ab2radiance(moon.get_point(NotNan::new(self.moon_fraction).expect("x should not be NaN")), *p)));
+            spectrum_sky.set(p, ext_frac * (spectrum_sky.get_point(p) + surface_brightness_ab2radiance(moon.get_point(NotNan::new(self.moon_fraction).expect("x should not be NaN")), *p)));
         }
-        println!("EMI_EXT {:?}", spectrum.get_point(NotNan::new(6.55e-7).unwrap()));
-        return spectrum;
+        let xp = spectrum_obj.x_points();
+        for p in xp {
+            let ext_frac = mag2frac(sky_ext.get_point(p) * self.airmass);
+            // Apply the model: I_sky = extinction(airmass) * (object + moon + background * airmass)
+            spectrum_obj.set(p, ext_frac * spectrum_obj.get_point(p));
+        }
+        return (spectrum_sky, spectrum_obj);
 
     }
 }

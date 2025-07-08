@@ -30,6 +30,7 @@ use crate::helpers::*;
 use crate::config_manager::*;
 use crate::data_file_manager::*;
 
+use std::str::FromStr;
 
 pub const CAHA_APERTURE_DIAMETER: f64 = 3.5;      // m
 pub const CAHA_FOCAL_LENGTH: f64 = 12.195;        // m
@@ -48,12 +49,25 @@ pub struct InstrumentProperties {
     coating: String,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum InstrumentArm {
     BlueArm,
     RedArm,
 }
 
+impl FromStr for InstrumentArm {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "red" => Ok(InstrumentArm::RedArm),
+            "blue" => Ok(InstrumentArm::BlueArm),
+            _ => Err(format!("Invalid arm: {}", s)),
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct InstrumentModel {
     properties: InstrumentProperties, 
     blue_ml15: Curve, 
@@ -131,7 +145,6 @@ impl InstrumentProperties {
     }
 }
 
-
 impl InstrumentModel {
     // Creates an Instrument Model
     pub fn new() -> InstrumentModel {
@@ -192,13 +205,11 @@ impl InstrumentModel {
             let _ = blue_w2px_curve.assign(&blue_disp_curve.clone());
             let _ = blue_w2px_curve.integrate(0.0); 
             let _ = instrument_model.blue_w2px.push(blue_w2px_curve.clone());
-            //println!("W2PX {:?}", blue_w2px_curve);
 
             let mut blue_px2w_curve: Curve = Default::default();
             let _ = blue_px2w_curve.assign(&blue_w2px_curve.clone());
             let _ = blue_px2w_curve.flip();
             let _ = instrument_model.blue_px2w.push(blue_px2w_curve.clone());
-            //println!("PX2WL {:?}", blue_px2w_curve);
 
             // Units of this datafile are nm -> nm/px
             // We invert the Y axis of the curve to have (m -> px / m)
@@ -211,7 +222,6 @@ impl InstrumentModel {
             let _ = red_disp_curve.invert_axis(YAxis, NotNan::new(1.0).expect("x should not be NaN"));
             //red_disp_curve.debug();
             let _ = instrument_model.red_disp.push(red_disp_curve.clone());
-            //println!("RED DISP CURVE {:?}", red_disp_curve);
 
             let mut red_repx_curve: Curve = Default::default();
             let _ = red_repx_curve.load_slice_dat(&DataFileManager::data_file(&"pxResolutionRed.csv".to_string()), i);
@@ -225,16 +235,12 @@ impl InstrumentModel {
             let _ = red_w2px_curve.assign(&red_disp_curve.clone());
             let _ = red_w2px_curve.integrate(0.0);
             let _ = instrument_model.red_w2px.push(red_w2px_curve.clone());
-            //println!("W2PX {:?}", red_w2px_curve);
 
             let mut red_px2w_curve: Curve = Default::default();
             let _ = red_px2w_curve.assign(&red_w2px_curve.clone());
             let _ = red_px2w_curve.flip();
             let _ = instrument_model.red_px2w.push(red_px2w_curve.clone());
-            //println!("PX2WL {:?}", red_px2w_curve);
         }
-
-        //instrument_model.properties.config = ConfigManager::get("instrument".into());
 
         return instrument_model;
     }
@@ -296,7 +302,7 @@ impl InstrumentModel {
                 Ok(curve.get_point(pixel))  
             }
             InstrumentArm::RedArm => {
-                let curve = &self.blue_px2w[slice];
+                let curve = &self.red_px2w[slice];
                 Ok(curve.get_point(pixel)) 
             }
         }
@@ -333,6 +339,7 @@ impl InstrumentModel {
             }
         }
     }
+
     // Turns a lambda into pixel for all pixels
     pub fn wavelength_to_pix_crv(&mut self, arm: InstrumentArm, slice: usize) -> Result<Curve, String> {
         if slice >= TARSIS_SLICES {
@@ -385,7 +392,6 @@ impl InstrumentModel {
         self.atten_spectrum.from_existing(&input.get_curve(), 1.0);   // Set input radiance
         self.atten_spectrum.scale_axis_factor(YAxis, total_scale);           // To irradiance
         self.atten_spectrum.multiply(&transmission);                  // Attenuate by transmission
-        //println!("ATTEN SPECTRUM: {:?}", self.atten_spectrum);
     }
 
     pub fn convolve_around(curve: &Curve, x0: f64, inv_sigma: f64, oversample: u32) -> f64 {
@@ -404,15 +410,11 @@ impl InstrumentModel {
             let weight = (-half_prec * offset * offset).exp();
             let not_nan_x = NotNan::new(x).expect("x should not be NaN");
             let dy = curve.get_point(not_nan_x) * weight;
-            //println!("CURVE BOUNDS: left: {}, right: {}", curve.get_oob_left(), curve.get_oob_right());
-            //println!("x: {}, nx: {} dy: {}", x, not_nan_x, dy);
             y += dy;
             scale += weight;
         }
 
         y /= scale;
-
-        //println!("Y: {}", y);
 
         return y;
     }
@@ -450,13 +452,7 @@ impl InstrumentModel {
         let disp = disp_ptr;
 
         disp_spectrum.from_existing(&self.atten_spectrum.get_curve(), 1.0);
-        //println!("ATTEN SPECTRUM: {:?}", self.atten_spectrum);
-        //println!("DISP: {:?}", disp_spectrum);
         disp_spectrum.scale_axis_curve_diff(XAxis, &w2px, &disp);
-        //disp_spectrum.scale_axis_curve_diff(XAxis, w2px, disp);
-        //println!("W2PX {:?}", w2px);
-        // disp_spectrum.scale_axis_curve(XAxis, disp.clone());//, disp); -> scale_axis_curve IS NOT WORKING!!! FIX!!!
-        //println!("DISP: {:?}", disp_spectrum);
 
         let mut pixel_flux: Spectrum = Default::default();
         
@@ -471,13 +467,8 @@ impl InstrumentModel {
                     res_el.get_point(NotNan::new(wl).expect("x should not be NaN")),
                     11) * to_photons);
             }
-            //println!("DISP SPECTRUM: {:?}", disp_spectrum)
         }
-
-        //println!("DISP SPECTRUM: {:?}", disp_spectrum);
-
-        println!("PIXEL FLUX: {}", pixel_flux.get_point(NotNan::new(6.55e-7).unwrap()));
-        //println!("PIXEL FLUX: {:?}", pixel_flux);
+        
         return pixel_flux;
 
     }

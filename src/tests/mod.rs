@@ -7,8 +7,10 @@
 //pub mod instrument_model_tests;
 //pub mod detector_tests;
 //pub mod simulation_tests;
-//pub mod simulate_tests;
+pub mod simulate_tests;
 
-pub mod general_tests;
+//pub mod general_tests;
 
 pub mod test_helpers;
+
+pub mod requirements_unit_tests;

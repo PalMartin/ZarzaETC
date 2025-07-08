@@ -8,3 +8,4 @@ pub mod simulation;
 pub mod tests;
 pub mod data_file_manager;
 pub mod config_manager;
+pub mod calculation_worker;

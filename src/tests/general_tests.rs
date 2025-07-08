@@ -82,14 +82,15 @@ mod tests {
     fn new_instrument_model() {
 
         let instrument = InstrumentModel::new();
-        println!("INSTRUMENT MODEL PROPERTIES -> f_num: {:?}", instrument.properties().get_f_num()); // not getting what is expected, CHECK
+        println!("INSTRUMENT MODEL PROPERTIES -> f_num: {:?}", instrument.properties().get_f_num()); 
 
     }
 
     #[test]
     fn new_sky_model() {
 
-        let sky = SkyModel::new();
+        let sky: SkyModel = SkyModel::new();
+        println!("SKY MODEL PROPERTIES -> airmass: {:?}", sky.properties.sky_emission); 
         
     }
 
