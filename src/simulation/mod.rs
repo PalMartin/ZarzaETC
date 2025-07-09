@@ -34,6 +34,8 @@ use std::collections::BTreeMap;
 //use ordered_float::Pow;
 use std::cmp;
 
+pub const GRID_SIZE: usize = 40;      // m
+
 
 #[derive(Clone, Debug)]
 pub struct SimulationParams {
@@ -129,6 +131,16 @@ pub struct Simulation {
     params: SimulationParams,
 }
 
+pub enum SpatialDistribution {
+    Infinite,
+    Uniform { center: f64, radius: f64 },
+    Sersic { center: f64, r_e: f64, n: f64 },
+    Exponential { center: f64, r_e: f64 },
+    Gaussian { center: f64, sigma: f64 },
+    Point { x0: usize, y0: usize },
+}
+
+
 impl Simulation {
     // Getter functions (for unit tests)
     pub fn get_input(&self) -> &Spectrum {
@@ -222,7 +234,7 @@ impl Simulation {
         //             7.4309394e7 W / (m^2 A sr)  
         let _ = spec.load_curve(&DataFileManager::data_file(&template_path.to_string())).unwrap(); // erg s-1 cm-2 A-1 -> CHECK IF ITS REAL FOR EVERY TEMPLATE
         let _ = spec.scale_axis_factor(YAxis, 7.4309394e7); // To SI units  -> FIX THE ANGULAR UNITS: THIS IS CONSIDERING ALL THE EMISSION OF THE GALAXY IS PUNTUAL
-        let _ = spec.scale_axis_factor(YAxis, 0.000625); // TO OBTAIN THE FLUX IN A SINGLE PIXEL CONSIDERING THAT IT FILLS THE WHOLE DETECTOR UNIFORMINGLY
+        //let _ = spec.scale_axis_factor(YAxis, 0.000625); // TO OBTAIN THE FLUX IN A SINGLE PIXEL CONSIDERING THAT IT FILLS THE WHOLE DETECTOR UNIFORMINGLY
         let _ = spec.scale_axis_factor(XAxis, 1e-10); // Convert angstrom to meters
         self.input = spec; // spectra in radiance units (J s-1 m-2 m-1 sr-1)
 
@@ -320,11 +332,36 @@ impl Simulation {
         let mut spec = Spectrum::default();
         *spec.get_curve_mut().get_map_mut() = line.clone();
         let _ = spec.scale_axis_factor(YAxis, 7.4309394e7); // To SI units  -> FIX THE ANGULAR UNITS: THIS IS CONSIDERING ALL THE EMISSION OF THE GALAXY IS PUNTUAL
-        let _ = spec.scale_axis_factor(YAxis, 0.000625); // TO OBTAIN THE FLUX IN A SINGLE PIXEL CONSIDERING THAT IT FILLS THE WHOLE DETECTOR UNIFORMINGLY
+        //let _ = spec.scale_axis_factor(YAxis, 0.000625); // TO OBTAIN THE FLUX IN A SINGLE PIXEL CONSIDERING THAT IT FILLS THE WHOLE DETECTOR UNIFORMINGLY
         let _ = spec.scale_axis_factor(XAxis, 1e-10); // Convert angstrom to meters
         self.input = spec; // spectra in radiance units (J s-1 m-2 m-1 sr-1)
 
 
+    }
+
+    pub fn set_spatial_distribution(&mut self, spatial_distr: SpatialDistribution, pixel_position: usize) {
+
+        let grid: Vec<Vec<f64>> = match spatial_distr {
+            SpatialDistribution::Infinite => self.clone().infinite_profile(),
+            SpatialDistribution::Uniform { center, radius } => {
+                self.clone().uniform_profile(center, radius)
+            }
+            SpatialDistribution::Sersic { center, r_e, n } => {
+                self.clone().sersic_profile(center, r_e, n)
+            }
+            SpatialDistribution::Exponential { center, r_e } => {
+                self.clone().exponential_profile(center, r_e)
+            }
+            SpatialDistribution::Gaussian { center, sigma } => {
+                self.clone().gaussian_profile(center, sigma)
+            }
+            SpatialDistribution::Point { x0, y0 } => {
+                self.clone().point_source(x0, y0)
+            }
+        };
+
+        self.input.scale_axis_factor(YAxis, grid[pixel_position][*self.get_params().get_slice()]); // NOT SHURE IF THIS IS THE CORRECT ORDER OF COORDENATES (SLICE-PIXEL_POSITION)
+        println!("Spatial Distr Factor {}", grid[pixel_position][*self.get_params().get_slice()])
     }
 
     pub fn normalize_to_r_mag(&mut self, mag_r: f64) { // ONLY FOR WHEN FILTER -> COUSINS_R IS SELECTED
@@ -584,68 +621,102 @@ impl Simulation {
     // ¡¡¡¡¡¡ Do a correct scaling so that the grid multipy the flux at each pixel so that is the correct percentage of the galaxy total flux (integrate the spectral template?)!!!
     // I found that i must multiply each value of the mask by the inverse of the summation of all values of the mask
 
-    fn infinite_profile(grid_size: usize) -> Vec<Vec<f64>> {
-        let mut grid = vec![vec![1.0; grid_size]; grid_size];
+    fn infinite_profile(self) -> Vec<Vec<f64>> {
+        let value = 1.0 / (GRID_SIZE * GRID_SIZE) as f64;
+        let grid = vec![vec![value; GRID_SIZE]; GRID_SIZE];
         return grid;
     }
 
-    fn uniform_profile(grid_size: usize, center: f64, radius: f64) -> Vec<Vec<f64>> {
-        let mut grid = vec![vec![0.0; grid_size]; grid_size]; 
-        for y in 0..grid_size {
-            for x in 0..grid_size {
+    fn uniform_profile(self, center: f64, radius: f64) -> Vec<Vec<f64>> {
+        let mut grid = vec![vec![0.0; GRID_SIZE]; GRID_SIZE]; 
+        let mut total = 0.0;
+        for y in 0..GRID_SIZE {
+            for x in 0..GRID_SIZE {
                 let r = ((x as f64 - center).powi(2) + (y as f64 - center).powi(2)).sqrt();
                 if r <= radius {
                     grid[y][x] = 1.0;
+                    total += 1.0;
                 } else {
                     grid[y][x] = 0.0;
                 }
             }
         }
+        // normalization
+        for y in 0..GRID_SIZE {
+            for x in 0..GRID_SIZE {
+                grid[y][x] /= total;
+            }
+        }
+
         return grid;
     }
 
-    fn sersic_profile(grid_size: usize, center: f64, r_e: f64, n: f64) -> Vec<Vec<f64>> {
-        let mut grid = vec![vec![0.0; grid_size]; grid_size]; 
+    fn sersic_profile(self, center: f64, r_e: f64, n: f64) -> Vec<Vec<f64>> {
+        let mut grid = vec![vec![0.0; GRID_SIZE]; GRID_SIZE]; 
         let b_n = 2.0 * n - (1.0 / 3.0) + (4.0 / (405.0 * n)) + (46.0 / (25515.0 * n.powf(2.0))); // Approximation
-        for y in 0..grid_size {
-            for x in 0..grid_size {
+        for y in 0..GRID_SIZE {
+            for x in 0..GRID_SIZE {
                 let r = ((x as f64 - center).powi(2) + (y as f64 - center).powi(2)).sqrt();
                 //grid[y][x] = i_e * ((-b_n * ((r / r_e).powf(1.0 / n) - 1.0)).exp());
                 grid[y][x] = (-b_n * ((r / r_e).powf(1.0 / n))).exp(); // NORMALIZED
             }
         }
+        // Normalization
+        let total: f64 = grid.iter().flatten().sum();
+        for y in 0..GRID_SIZE {
+            for x in 0..GRID_SIZE {
+                grid[y][x] /= total;
+            }
+        }
+
         return grid;
     }
 
-    fn exponential_profile(grid_size: usize, center: f64, r_e: f64) -> Vec<Vec<f64>> {
-        let mut grid = vec![vec![0.0; grid_size]; grid_size]; 
+    fn exponential_profile(self, center: f64, r_e: f64) -> Vec<Vec<f64>> {
+        let mut grid = vec![vec![0.0; GRID_SIZE]; GRID_SIZE]; 
         //let b_n = 2.0 * n - (1.0 / 3.0); // Approximation for b_n only for n > 8.
-        for y in 0..grid_size {
-            for x in 0..grid_size {
+        for y in 0..GRID_SIZE {
+            for x in 0..GRID_SIZE {
                 let r = ((x as f64 - center).powf(2.0) + (y as f64 - center).powf(2.0)).sqrt();
                 //grid[y][x] = i_e * (((r / r_e).powf(1.0 / n) - 1.0).exp());
                 grid[y][x] = (-r / r_e).exp(); // NORMALIZED
             }
         }
-        return grid;
-    }
-
-    fn gaussian_profile(grid_size: usize, center: f64, sigma: f64) -> Vec<Vec<f64>> {
-        let mut grid = vec![vec![0.0; grid_size]; grid_size];
-        for y in 0..grid_size {
-            for x in 0..grid_size {
-                let r = ((x as f64 - center).powf(2.0) + (y as f64 - center).powf(2.0)).sqrt();
-                //grid[y][x] = i_e * ((- r.powf(2.0) / (2.0 * sigma.powf(2.0))).exp());
-                grid[y][x] = - r.powf(2.0) / (2.0 * sigma.powf(2.0)).exp(); // NORMALIZED
+        // Normalization
+        let total: f64 = grid.iter().flatten().sum();
+        for y in 0..GRID_SIZE {
+            for x in 0..GRID_SIZE {
+                grid[y][x] /= total;
             }
         }
+
         return grid;
     }
 
-    fn point_source(grid_size: usize, x0: usize, y0: usize) -> Vec<Vec<f64>> {
-        let mut grid = vec![vec![0.0; grid_size]; grid_size]; 
-        for y in 0..grid_size {
-            for x in 0..grid_size {
+    fn gaussian_profile(self, center: f64, sigma: f64) -> Vec<Vec<f64>> {
+        let mut grid = vec![vec![0.0; GRID_SIZE]; GRID_SIZE];
+        for y in 0..GRID_SIZE {
+            for x in 0..GRID_SIZE {
+                let r = ((x as f64 - center).powf(2.0) + (y as f64 - center).powf(2.0)).sqrt();
+                //grid[y][x] = i_e * ((- r.powf(2.0) / (2.0 * sigma.powf(2.0))).exp());
+                grid[y][x] = (-(r.powi(2)) / (2.0 * sigma.powi(2))).exp();// NORMALIZED
+            }
+        }
+        // Normalization
+        let total: f64 = grid.iter().flatten().sum();
+        for y in 0..GRID_SIZE {
+            for x in 0..GRID_SIZE {
+                grid[y][x] /= total;
+            }
+        }
+
+        return grid;
+    }
+
+    fn point_source(self, x0: usize, y0: usize) -> Vec<Vec<f64>> {
+        let mut grid = vec![vec![0.0; GRID_SIZE]; GRID_SIZE]; 
+        for y in 0..GRID_SIZE {
+            for x in 0..GRID_SIZE {
                 if x == x0 && y == y0 {
                     grid[y][x] = 1.0;
                 } else {

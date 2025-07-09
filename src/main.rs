@@ -1,5 +1,7 @@
 use clap::Parser;
 use ordered_float::NotNan;
+use rand_distr::uniform;
+use rand_distr::Uniform;
 use zarza_etc::calculation_worker::CalculationProduct;
 use zarza_etc::detector::*;
 use zarza_etc::curve::*;
@@ -74,8 +76,12 @@ fn main() {
     // Set detector
     simul.get_det_mut().set_detector(args.choose_det.to_string());
     // Set input object spectrum
-    //simul.set_input_template(&String::from("SEDs/".to_string() + &args.template));
-    simul.set_input_line(NotNan::new(6563.0).unwrap(), 9.8e-14, 0.1, 2.8e-14, &String::from("emission_line"), &String::from("Resolved"), RedArm, 6500.0, 6610.0);
+    simul.set_input_template(&String::from("SEDs/".to_string() + &args.template));
+    //simul.set_input_line(NotNan::new(6563.0).unwrap(), 9.8e-14, 0.1, 2.8e-14, &String::from("emission_line"), &String::from("Resolved"), RedArm, 6500.0, 6610.0);
+    // Set spatial distribution
+    simul.set_spatial_distribution(SpatialDistribution::Infinite, 20);
+    // for other with different inputs it works like this: simul.set_spatial_distribution(SpatialDistribution::Uniform{center: 40.0, radius: 15.0}, pixel_position);
+
     // Set simulation parameters into the simulation
     simul.set_params(simul_params.clone());
     // Simulate instrument arm
@@ -89,7 +95,7 @@ fn main() {
     let _ = simul.get_det_mut().noise_crv().save_curve("simulated_noise_curve.csv");
     let _ = simul.get_det_mut().snr_crv().save_curve("simulated_snr_curve.csv");
 
-    println!("Exposure time: {:?}", simul.texp_from_snr(10.0, NotNan::new(6.563e-7).expect("x should not be NaN"), 3.0));
+    println!("Exposure time for NDIT = 3: {:?}", simul.texp_from_snr(10.0, NotNan::new(6.563e-7).expect("x should not be NaN"), 3.0));
     //println!("Limiting magnitude: {:.3}", simul.lim_mag(NotNan::new(6.5e-7).expect("x should not be NaN"), RedArm));
     println!("Limiting magnitude: {:.3}", simul.lim_mag(NotNan::new(6.563e-7).expect("x should not be NaN"), RedArm));
     println!("Limiting flux: {:.3e} [W m-2 m-1]", simul.lim_flux(NotNan::new(6.563e-7).expect("x should not be NaN"), RedArm));
@@ -111,8 +117,8 @@ fn main() {
     // Set detector
     simul_2.get_det_mut().set_detector(args.choose_det.to_string());
     // Set input object spectrum
-    //simul_2.set_input_template(&String::from("SEDs/".to_string() + &args.template));
-    simul_2.set_input_line(NotNan::new(6563.0).unwrap(), 9.8e-14, 0.1, 2.8e-14, &String::from("emission_line"), &String::from("Resolved"), RedArm, 6500.0, 6610.0);
+    simul_2.set_input_template(&String::from("SEDs/".to_string() + &args.template));
+    //simul_2.set_input_line(NotNan::new(6563.0).unwrap(), 9.8e-14, 0.1, 2.8e-14, &String::from("emission_line"), &String::from("Resolved"), RedArm, 6500.0, 6610.0);
     // Set simulation parameters into the simulation
     simul_2.set_params(simul_params.clone());
     // Simulate instrument arm
