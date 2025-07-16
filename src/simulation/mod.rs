@@ -29,7 +29,7 @@ use crate::detector::*;
 use crate::curve::CurveAxis::*;
 use crate::data_file_manager::*;
 use crate::spectrum::SpectrumAxisOperations;
-use std::arch::aarch64::float64x1x3_t;
+//use std::arch::aarch64::float64x1x3_t;
 use std::collections::BTreeMap;
 //use ordered_float::Pow;
 use std::cmp;
@@ -131,6 +131,7 @@ pub struct Simulation {
     params: SimulationParams,
 }
 
+//#[derive(Clone, Debug)]
 pub enum SpatialDistribution {
     Infinite,
     Uniform { center: f64, radius: f64 },
@@ -214,7 +215,9 @@ impl Simulation {
         self.filter_equiv_bw = self.filter.integral();
     }
 
-    pub fn set_input_user(&mut self, spec: Spectrum) {
+    pub fn set_input_user(&mut self, spec_file_path: &String) { // USER MUST CHECK ID THEIR DATA IS NORMALIZED AND IN THE CORRECT UNITS
+        let mut spec = Spectrum::default();
+        let _ = spec.load_curve(spec_file_path).unwrap();
         self.input = spec;
     }
 
@@ -234,36 +237,9 @@ impl Simulation {
         //             7.4309394e7 W / (m^2 A sr)  
         let _ = spec.load_curve(&DataFileManager::data_file(&template_path.to_string())).unwrap(); // erg s-1 cm-2 A-1 -> CHECK IF ITS REAL FOR EVERY TEMPLATE
         let _ = spec.scale_axis_factor(YAxis, 7.4309394e7); // To SI units  -> FIX THE ANGULAR UNITS: THIS IS CONSIDERING ALL THE EMISSION OF THE GALAXY IS PUNTUAL
-        //let _ = spec.scale_axis_factor(YAxis, 0.000625); // TO OBTAIN THE FLUX IN A SINGLE PIXEL CONSIDERING THAT IT FILLS THE WHOLE DETECTOR UNIFORMINGLY
         let _ = spec.scale_axis_factor(XAxis, 1e-10); // Convert angstrom to meters
         self.input = spec; // spectra in radiance units (J s-1 m-2 m-1 sr-1)
 
-        //match spatial_distr {
-        //    "infinite" => {
-        //        let intensity_grid = infinite_profile(grid_size);
-        //    }
-        //    "uniform" => {
-        //        let intensity_grid = uniform_profile(grid_size, center, radius);
-        //    }
-        //    "sersic" => {
-        //        let intensity_grid = sersic_profile(grid_size, center, r_e, n);
-        //    }
-        //    "exponential" => {
-        //        let intensity_grid = exponential_profile(grid_size, center, r_e);
-        //    }
-        //    "gaussian" => {
-        //        let intensity_grid = gaussian_profile(grid_size, center, sigma);
-        //    }
-        //    "point" => {
-        //        let intensity_grid = point_source(grid_size, x0, y0);
-        //    }
-        //}
-        //for (y, row) in intensity_grid.iter().enumerate() {
-        //    for (x, &val) in row.iter().enumerate() {
-        //        self.input.get_point(x).multiply(val) ; // esto es lo de la distribución espacial
-        //        self.input[x][y] = 
-        //    }
-        //}
     }
 
     // FIX UNITS IN SET_INPUT_LINE
@@ -273,10 +249,10 @@ impl Simulation {
 
         let mut line = BTreeMap::new();
         let mut sigma = 0.0;
-        if res == String::from("Resolved") {
+        if res == String::from("resolved") {
             sigma = fwhm / STD2FWHM; // FWHM in Ángstrom​​
         } 
-        else if res == String::from("Unresolved") {
+        else if res == String::from("unresolved") {
             let mut fwhm_ins = Curve::default();
             match arm {
                 InstrumentArm::BlueArm => {
@@ -288,11 +264,8 @@ impl Simulation {
             }
             sigma = fwhm_ins.get_point(central_wl) / STD2FWHM;
         } else {
-            panic!("Unexpected type format for {}. Expected 'Resolved' or 'Unresolved'.", res)
+            panic!("Unexpected type format for {}. Expected 'resolved' or 'unresolved'.", res)
         }
-        //let wl_min = central_wl - 5.0 * sigma;
-        //let wl_max = central_wl + 5.0 * sigma;
-        //let num_points = 1000; // The unit test dont work if there are less points
 
         let num_points = 500;
         for i in 0..num_points {
@@ -311,7 +284,6 @@ impl Simulation {
                     line.insert(wl, cont_flux + flux);
                     line.insert(central_wl, int_flux + cont_flux); 
                 }
-                //*self.input.get_curve_mut().get_map_mut() = line;
             }
             "absorption_line" => {
                 for i in 0..num_points {
@@ -322,7 +294,6 @@ impl Simulation {
                     line.insert(wl, cont_flux - flux);
                     line.insert(central_wl, int_flux + cont_flux);
                 }
-                //*self.input.get_curve_mut().get_map_mut() = line;
             }
             _ => {
                 eprintln!("Warning: Unknown line type '{}'. Expected: 'emission_line' or 'absorption_line'.", line_type);
@@ -332,7 +303,6 @@ impl Simulation {
         let mut spec = Spectrum::default();
         *spec.get_curve_mut().get_map_mut() = line.clone();
         let _ = spec.scale_axis_factor(YAxis, 7.4309394e7); // To SI units  -> FIX THE ANGULAR UNITS: THIS IS CONSIDERING ALL THE EMISSION OF THE GALAXY IS PUNTUAL
-        //let _ = spec.scale_axis_factor(YAxis, 0.000625); // TO OBTAIN THE FLUX IN A SINGLE PIXEL CONSIDERING THAT IT FILLS THE WHOLE DETECTOR UNIFORMINGLY
         let _ = spec.scale_axis_factor(XAxis, 1e-10); // Convert angstrom to meters
         self.input = spec; // spectra in radiance units (J s-1 m-2 m-1 sr-1)
 
@@ -361,30 +331,45 @@ impl Simulation {
         };
 
         self.input.scale_axis_factor(YAxis, grid[pixel_position][*self.get_params().get_slice()]); // NOT SHURE IF THIS IS THE CORRECT ORDER OF COORDENATES (SLICE-PIXEL_POSITION)
-        println!("Spatial Distr Factor {}", grid[pixel_position][*self.get_params().get_slice()])
+        //println!("Spatial Distr Factor {}", grid[pixel_position][*self.get_params().get_slice()])
     }
 
-    pub fn normalize_to_r_mag(&mut self, mag_r: f64) { // ONLY FOR WHEN FILTER -> COUSINS_R IS SELECTED
+    // pub fn normalize_to_r_mag(&mut self, mag_r: f64) { // ONLY FOR WHEN FILTER -> COUSINS_R IS SELECTED
+    //     let mut filtered = Spectrum::default();
+    //     filtered.from_existing(&self.input.get_curve(), 1.0);
+    //     filtered.invert_axis_spec(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap());
+    //     filtered.multiply(&self.filter); 
+        
+    //     let desired_sb = surface_brightness_ab2freq_radiance(mag_r);
+
+    //     let mean_sb = filtered.integral() / self.filter_equiv_bw;
+
+    //     self.input.scale_axis_factor(YAxis, desired_sb / mean_sb);
+    // }
+
+    // pub fn normalize_to_filter_mag(&mut self, mag: f64, filter: &str) {
+    //     // Normalize to Johnson-Cousins U,B,V,R,I or SDSS u,g,r,i bands
+    //     let mut filtered = Spectrum::default();
+    //     filtered.from_existing(&self.input.get_curve(), 1.0);
+    //     filtered.invert_axis_spec(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap()); 
+    //     filtered.multiply(by_what);
+
+    //     let desired_sb = surface_brightness_ab2freq_radiance(mag);
+    //     let mean_sb = filtered.integral() / self.filter_equiv_bw;
+    //     self.input.scale_axis_factor(YAxis, desired_sb / mean_sb);
+    // }
+
+    // IT IS NECESSARY TO PREVIOUSLY USE "SET_FILTER"
+    pub fn normalize_to_filter_mag(&mut self, mag: f64) { // ONLY FOR WHEN FILTER -> COUSINS_R IS SELECTED
         let mut filtered = Spectrum::default();
         filtered.from_existing(&self.input.get_curve(), 1.0);
         filtered.invert_axis_spec(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap());
         filtered.multiply(&self.filter); 
         
-        let desired_sb = surface_brightness_ab2freq_radiance(mag_r);
-
-        let mean_sb = filtered.integral() / self.filter_equiv_bw;
-
-        self.input.scale_axis_factor(YAxis, desired_sb / mean_sb);
-    }
-
-    pub fn normalize_to_filter_mag(&mut self, mag: f64, filter: &str) {
-        // Normalize to Johnson-Cousins U,B,V,R,I or SDSS u,g,r,i bands
-        let mut filtered = Spectrum::default();
-        filtered.from_existing(&self.input.get_curve(), 1.0);
-        filtered.invert_axis_spec(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap()); 
-
         let desired_sb = surface_brightness_ab2freq_radiance(mag);
+
         let mean_sb = filtered.integral() / self.filter_equiv_bw;
+
         self.input.scale_axis_factor(YAxis, desired_sb / mean_sb);
     }
 
@@ -408,17 +393,17 @@ impl Simulation {
     }
 
     pub fn simulate_arm(&mut self, arm: InstrumentArm) { 
-        let mut tarsis_prop: &mut InstrumentProperties = self.tarsis_model.properties_mut();
-        let mut det_name: &str;
+        let tarsis_prop: &mut InstrumentProperties = self.tarsis_model.properties_mut();
+        // let mut det_name: &str;
 
-        match arm {
-            InstrumentArm::BlueArm => {
-                det_name = &self.params.blue_detector;
-            }
-            InstrumentArm::RedArm => {
-                det_name = &self.params.red_detector;
-            }
-        }
+        // match arm {
+        //     InstrumentArm::BlueArm => {
+        //         det_name = &self.params.blue_detector;
+        //     }
+        //     InstrumentArm::RedArm => {
+        //         det_name = &self.params.red_detector;
+        //     }
+        // }
 
         // Set coating
         *tarsis_prop.get_coating_mut() = self.det.get_spec().get_coating().clone();
@@ -470,7 +455,7 @@ impl Simulation {
     }
 
     // Returns DIT or NDIT depending in what the user providad (first element of the touple), as well as INT (=DIT*NDIT) (second element of the touple)
-    pub fn texp_from_snr(&mut self, snr: f64, lambda_ref: NotNan<f64>, input: f64) -> (f64, f64) { // CHECK, ITS WRONG
+    pub fn texp_from_snr(&mut self, snr: f64, lambda_ref: NotNan<f64>) -> f64 {//, input: f64) -> (f64, f64) { // CHECK, ITS WRONG
 
         let inv_gain = 1.0 / self.det.get_detector().get_gain();
 
@@ -483,9 +468,8 @@ impl Simulation {
 
         let t = (b + ((b * b) + (4.0 * a * c)).sqrt()) / (2.0 * a);
 
-        return (t / input, t);
-
-
+        return t;
+        //return (t / input, t);
     }
 
     pub fn lim_mag(&mut self, lambda_ref: NotNan<f64>, arm: InstrumentArm) -> f64 { 
