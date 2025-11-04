@@ -38,17 +38,26 @@ use std::time::SystemTime;
 use rand::prelude::*;
 use rand_distr::{Poisson, Normal, Distribution};
 
+/// Structure to hold SNR curve data
 #[derive(Clone)]
 pub struct SNRcurve {
+    /// Indicates if the SNR curve has been initialized
     initialized: bool,
+    /// Wavelength to pixel curve
     pub wl_to_pixel: Curve,
+    /// Wavelength curve values
     pub wavelength: Vec<f64>,
+    /// Signal curve
     pub signal: Curve, 
+    /// Noise curve
     pub noise: Curve,
+    /// Counts curve
     pub counts: Curve
 }
 
+/// Implementation of SNRcurve methods 
 impl SNRcurve {
+    /// Create a new SNR curve instance with default values.
     pub fn new() -> SNRcurve{
         let mut snr_curve = SNRcurve {
             initialized: false,
@@ -69,10 +78,15 @@ impl SNRcurve {
     }
 }
 
+/// Structure to hold data resulting from the calculations
 pub struct CalculationProduct {
+    /// SNR curve for the red arm
     red_arm: SNRcurve,
+    /// SNR curve for the blue arm
     blue_arm: SNRcurve,
 }
+
+/// Structure to hold the initial values and parameters for calculations
 pub struct CalculationWorker {
     pub simulation: Simulation,
     sim_params: SimulationParams,
@@ -80,7 +94,9 @@ pub struct CalculationWorker {
     pub input_spectrum: Spectrum,
 }
 
+/// Implementation of CalculationWorker methods
 impl CalculationWorker {
+    /// Initialize a new CalculationWorker instance.
     pub fn init() -> CalculationWorker {
         let mut calculation_worker = CalculationWorker {
             simulation: Simulation::new(),
@@ -92,7 +108,8 @@ impl CalculationWorker {
         return calculation_worker;
     }
 
-    fn simulate_arm(&mut self, arm: InstrumentArm, curve: &mut SNRcurve, input_simulation: &mut Simulation) { // WORKS WITH AN ALREADY DONE SIMULATION AS INPUT, AND ONLY MODIFIES IT
+    /// Run the simulation for a specific instrument arm and save results in the SNR curve.
+    fn simulate_arm(&mut self, arm: InstrumentArm, curve: &mut SNRcurve, input_simulation: &mut Simulation) { 
         let ron: f64;
         let inv_gain: f64;
 
@@ -136,14 +153,16 @@ impl CalculationWorker {
 
     }
 
+    /// Simulate in a single slice of TARSIS
     fn single_shot(&mut self, curve: &mut SNRcurve, input_simulation: &mut Simulation, arm: InstrumentArm) -> SNRcurve {
 
-        self.simulate_arm(arm, curve, input_simulation);// &mut curve);
+        self.simulate_arm(arm, curve, input_simulation);
 
         return curve.clone();
 
     }
 
+    /// Simulate in all the TARSIS slices of TARSIS
     fn all_slices(&mut self, curve: &mut SNRcurve, input_simulation: &mut Simulation, arm: InstrumentArm) -> SNRcurve {
 
         for i in 0..TARSIS_SLICES {
@@ -155,6 +174,7 @@ impl CalculationWorker {
         return curve.clone();
     }
 
+    /// Main simulation function to run the calculation based on the input parameters.
     pub fn simulate(&mut self, curve: &mut SNRcurve, input_simulation: &mut Simulation, arm: InstrumentArm) -> SNRcurve{
 
         if *input_simulation.get_params().get_slice() < 0 {

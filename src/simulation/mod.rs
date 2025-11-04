@@ -29,78 +29,100 @@ use crate::detector::*;
 use crate::curve::CurveAxis::*;
 use crate::data_file_manager::*;
 use crate::spectrum::SpectrumAxisOperations;
-//use std::arch::aarch64::float64x1x3_t;
 use std::collections::BTreeMap;
-//use ordered_float::Pow;
 use std::cmp;
 
-pub const GRID_SIZE: usize = 40;      // m
+/// Size of the spatial distribution grid (GRID_SIZE x GRID_SIZE)
+pub const GRID_SIZE: usize = 40;      
 
-
+/// Structure to hold simulation parameters.
 #[derive(Clone, Debug)]
 pub struct SimulationParams {
+    /// Program name
     prog_name: String,
-    blue_detector: String,
-    red_detector: String, 
-    airmass: f64,
-    moon: f64, 
-    dit: f64,
-    ndit: i32,
-    //exposure: f64,
-    snr: f64,
-    r_ab_mag: f64,
-    slice: usize,
+    ///Blue detector name
+    blue_detector: String, 
+    /// Red detector name
+    red_detector: String,  
+    /// Airmass
+    airmass: f64,      
+    /// Moon phase (0-100)
+    moon: f64,           
+    /// Detector integration time (s)
+    dit: f64,              
+    /// Number of detector integrations
+    ndit: i32,            
+    /// Desired SNRf
+    snr: f64,              
+    /// Target AB magnitude in r band
+    r_ab_mag: f64,         
+    /// Slice of the IFU (0-39)
+    slice: usize,          
 }
+
+/// Impmentation of methods for SimulationParams
 impl SimulationParams {
-    // Getter functions (for unit tests)
+    /// Inmutable access to the program name.
     pub fn get_prog_name(&self) -> &String {
         &self.prog_name
     }
+    /// Inmutable access to the blue detector name.
     pub fn get_blue_detector(&self) -> &String {
         &self.blue_detector
     }
+    /// Inmutable access to the red detector name.
     pub fn get_red_detector(&self) -> &String {
         &self.red_detector
     }
+    /// Inmutable access to the airmass value.
     pub fn get_airmass(&self) -> &f64 {
         &self.airmass
     }
+    /// Mutable access to the airmass value.
     pub fn get_airmass_mut(&mut self) -> &mut f64 {
         &mut self.airmass
     }
+    /// Inmutable access to the moon phase value.
     pub fn get_moon(&self) -> &f64 {
         &self.moon
     }
+    /// Mutable access to the moon phase value.
     pub fn get_moon_mut(&mut self) -> &mut f64 {
         &mut self.moon
     }
+    /// Inmutable access to the exposure time per exposure (DIT).
     pub fn get_dit(&self) -> &f64 {
         &self.dit
     }
+    /// Mutable access to the exposure time per exposure (DIT).
     pub fn get_dit_mut(&mut self) -> &mut f64 {
         &mut self.dit
     }
+    /// Inmutable access to the number of exposures (NDIT).
     pub fn get_ndit(&self) -> &i32 {
         &self.ndit
     }
+    /// Mutable access to the number of exposures (NDIT).
     pub fn get_ndit_mut(&mut self) -> &mut i32 {
         &mut self.ndit
     }
-    //pub fn get_exposure_time(&self) -> &f64 {
-    //    &(self.dit * self.ndit as f64)
-    //}
+    /// Inmutable access to the target AB magnitude in r band.
     pub fn get_r_ab_mag(&self) -> &f64 {
         &self.r_ab_mag
     }
+    /// Mutable access to the target AB magnitude in r band.
     pub fn get_r_ab_mag_mut(&mut self) -> &mut f64 {
         &mut self.r_ab_mag
     }
+    /// Inmutable access to the selected slice of the IFU.
     pub fn get_slice(&self) -> &usize {
         &self.slice
     }
+    /// Mutable access to the selected slice of the IFU.
     pub fn get_slice_mut(&mut self) -> &mut usize {
         &mut self.slice
     }
+    /// Constructor for SimulationParams with default values.
     pub fn new() -> SimulationParams {
         SimulationParams {
             prog_name: String::from(""),
@@ -118,75 +140,97 @@ impl SimulationParams {
     }
 }
 
+/// Structure to hold the entire simulation state.
 #[derive(Clone)]
 pub struct Simulation {
-    input: Spectrum,
-    filter: Curve,
-    filter_equiv_bw: f64,
-    sky: Spectrum,
-    obj: Spectrum,
-    sky_model: SkyModel,
-    tarsis_model: InstrumentModel,
-    det: Detector,
-    params: SimulationParams,
+    /// Input spectrum (object + sky)
+    input: Spectrum,               
+    /// Filter curve (e.g., Cousins R)
+    filter: Curve,                 
+    /// Equivalent bandwidth of the filter
+    filter_equiv_bw: f64,          
+    /// Sky spectrum
+    sky: Spectrum,                 
+    /// Object spectrum
+    obj: Spectrum,                 
+    /// Sky model
+    sky_model: SkyModel,           
+    /// TARSIS instrument model
+    tarsis_model: InstrumentModel, 
+    /// Detector model
+    det: Detector,                 
+    /// Simulation parameters
+    params: SimulationParams,      
 }
 
-//#[derive(Clone, Debug)]
+/// Enum to define different spatial distributions for the input source flux.
 pub enum SpatialDistribution {
-    Infinite,
-    Uniform { center: f64, radius: f64 },
-    Sersic { center: f64, r_e: f64, n: f64 },
-    Exponential { center: f64, r_e: f64 },
-    Gaussian { center: f64, sigma: f64 },
-    Point { x0: usize, y0: usize },
+    /// Infnite uniform source.
+    Infinite,                                 
+    /// Point source.
+    Point,                                    
+    /// Uniform disk with given center and radius (arcsec).
+    Uniform { center: f64, radius: f64 },     
+    /// Sersic profile with given center, effective radius (arcsec) and Sersic index (n).
+    Sersic { center: f64, r_e: f64, n: f64 }, 
+    /// Exponential profile with given center and scale radius (arcsec).
+    Exponential { center: f64, r_e: f64 },    
+    /// Gaussian profile with given center and standard deviation (arcsec).
+    Gaussian { center: f64, sigma: f64 },     
 }
 
-
+/// Implementation of methods for the Simulation struct.
 impl Simulation {
-    // Getter functions (for unit tests)
+    /// Inmutable access to the input spectrum.
     pub fn get_input(&self) -> &Spectrum {
         &self.input
     }
+    /// Mutable access to the input spectrum.
     pub fn get_input_mut(&mut self) -> &mut Spectrum {
         &mut self.input
     }
+    /// Inmutable access to the filter curve.
     pub fn get_filter(&self) -> &Curve {
         &self.filter
     }
+    /// Inmutable access to the filter equivalent bandwidth.
     pub fn get_filter_equiv_bw(&self) -> &f64 {
         &self.filter_equiv_bw
     }
-    //pub fn get_cousins_r(&self) -> &Curve {
-    //     &self.cousins_r
-    // }
-    // pub fn get_cousins_r_equiv_bw(&self) -> &f64 {
-    //     &self.cousins_r_equiv_bw
-    // }
+    /// Inmutable access to the sky spectrum.
     pub fn get_sky(&self) -> &Spectrum {
         &self.sky
     }
+    /// Inmutable access to the sky model.
     pub fn get_sky_model(&self) -> &SkyModel {
         &self.sky_model
     }
+    /// Inmutable access to the TARSIS instrument model.
     pub fn get_tarsis_model(&self) -> &InstrumentModel {
         &self.tarsis_model
     }
+    /// Mutable access to the TARSIS instrument model.
     pub fn get_tarsis_model_mut(&mut self) -> &mut InstrumentModel {
         &mut self.tarsis_model
     }
+    /// Inmutable access to the detector model.
     pub fn get_det(&self) -> &Detector {
         &self.det
     }
+    /// Mutable access to the detector model.
     pub fn get_det_mut(&mut self) -> &mut Detector {
         &mut self.det
     }
+    /// Inmutable access to the simulation parameters.
     pub fn get_params(&self) -> &SimulationParams {
         &self.params
     }
+    /// Mutable access to the simulation parameters.
     pub fn get_params_mut(&mut self) -> &mut SimulationParams {
         &mut self.params
     }
 
+    /// Constructor for Simulation with default values.
     pub fn new() -> Simulation {
         let simulation = Simulation {
             input: Spectrum::default(),
@@ -203,6 +247,7 @@ impl Simulation {
         return simulation;
     }
 
+    /// Set the filter curve from a file path.
     pub fn set_filter(&mut self, filter_path: &String) {
         // FILTER PATH: the path of the desired filter (cousins_r, gjc or sdss):
         // Generic_Cousins_R.csv; Generic_Johnson_UBVRIJHKL.U.csv; Generic_Johnson_UBVRIJHKL.B.csv; 
@@ -215,12 +260,14 @@ impl Simulation {
         self.filter_equiv_bw = self.filter.integral();
     }
 
+    /// Set the input spectrum from a user-provided file path.
     pub fn set_input_user(&mut self, spec_file_path: &String) { // USER MUST CHECK ID THEIR DATA IS NORMALIZED AND IN THE CORRECT UNITS
         let mut spec = Spectrum::default();
         let _ = spec.load_curve(spec_file_path).unwrap();
         self.input = spec;
     }
 
+    /// Set the input spectrum from a predefined template.
     pub fn set_input_template(&mut self, template_path: &String) { // CHECK UNIT CONVERSION!!
         // TEMPLATE PATH: the path of the desired spectral template (galactic (swire), active galaxy (AGN atlas) or stellar (pickles)):
         // Ell2_template.csv; ll5_template.csv; Ell13_template.csv; S0_template.csv; Sa_template.csv; Sb_template.csv;
@@ -242,13 +289,19 @@ impl Simulation {
 
     }
 
-    // FIX UNITS IN SET_INPUT_LINE
-    // OJO, ARREGLAR: HAY QUE PONER LA OPCIÓN DE A QUE LAMBDA CORTAR LA EMISIÓN DEL CONTINUO (ROYO CONSIDERAR UNA LÍNEA ACOMPAÑADA DEL CONTINUO DE UNA LAMBDA ESPECIFICA HASTA OTRA)
+    // FIX UNITS IN SET_INPUT_LINE !!
+    // ¡¡¡FIX!!!: MUST ADD THE OPTION OF SPECIFY AT WHICH LAMBDA TO CUT THE CONTINUUM EMISSION 
+    // CHECK NORMALIZATION TO A GIVEN MAGNITUDE FOR THE CONTINUUM AND THE LINE
+    // MISSING THE OPTION TO NORMALIZE THE CONTINUUM TO A GIVEN MAGNITUDE (E.G., IN R BAND)
+
+    /// Set the input spectrum as a Gaussian emission or absorption line.
     pub fn set_input_line(&mut self, central_wl: NotNan<f64>, int_flux: f64, fwhm: f64, cont_flux: f64, line_type: &str, res: &str, arm: InstrumentArm, wl_min: f64, wl_max: f64) {
         // wl in angstrom and input fluxes must be given in phot/s/cm2/angstrom, same units as the galaxy templates
 
+        // Initialize line profile.
         let mut line = BTreeMap::new();
         let mut sigma = 0.0;
+        // Check if the line is resolved or unresolved and set sigma accordingly.
         if res == String::from("resolved") {
             sigma = fwhm / STD2FWHM; // FWHM in Ángstrom​​
         } 
@@ -267,6 +320,7 @@ impl Simulation {
             panic!("Unexpected type format for {}. Expected 'resolved' or 'unresolved'.", res)
         }
 
+        // Generate line profile over the specified wavelength range.
         let num_points = 500;
         for i in 0..num_points {
             let wl_val = wl_min + (i as f64) * (wl_max - wl_min) / (num_points as f64 - 1.0);
@@ -274,6 +328,7 @@ impl Simulation {
             line.insert(wl, cont_flux);
         }
     
+        // Add Gaussian line profile to the continuum based on line type.
         match line_type {
             "emission_line" => {
                 for i in 0..num_points {
@@ -309,10 +364,13 @@ impl Simulation {
 
     }
 
+    /// Set the spatial distribution of the input source flux.
     pub fn set_spatial_distribution(&mut self, spatial_distr: SpatialDistribution, pixel_position: usize) {
 
+        // Generate spatial distribution grid based on the selected profile to mask the input spectrum.
         let grid: Vec<Vec<f64>> = match spatial_distr {
             SpatialDistribution::Infinite => self.clone().infinite_profile(),
+            SpatialDistribution::Point => self.clone().point_source(),
             SpatialDistribution::Uniform { center, radius } => {
                 self.clone().uniform_profile(center, radius)
             }
@@ -325,41 +383,13 @@ impl Simulation {
             SpatialDistribution::Gaussian { center, sigma } => {
                 self.clone().gaussian_profile(center, sigma)
             }
-            SpatialDistribution::Point { x0, y0 } => {
-                self.clone().point_source(x0, y0)
-            }
         };
 
+        // Scale the input spectrum by the value at the specified pixel position in the grid.
         self.input.scale_axis_factor(YAxis, grid[pixel_position][*self.get_params().get_slice()]); // NOT SHURE IF THIS IS THE CORRECT ORDER OF COORDENATES (SLICE-PIXEL_POSITION)
-        //println!("Spatial Distr Factor {}", grid[pixel_position][*self.get_params().get_slice()])
     }
 
-    // pub fn normalize_to_r_mag(&mut self, mag_r: f64) { // ONLY FOR WHEN FILTER -> COUSINS_R IS SELECTED
-    //     let mut filtered = Spectrum::default();
-    //     filtered.from_existing(&self.input.get_curve(), 1.0);
-    //     filtered.invert_axis_spec(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap());
-    //     filtered.multiply(&self.filter); 
-        
-    //     let desired_sb = surface_brightness_ab2freq_radiance(mag_r);
-
-    //     let mean_sb = filtered.integral() / self.filter_equiv_bw;
-
-    //     self.input.scale_axis_factor(YAxis, desired_sb / mean_sb);
-    // }
-
-    // pub fn normalize_to_filter_mag(&mut self, mag: f64, filter: &str) {
-    //     // Normalize to Johnson-Cousins U,B,V,R,I or SDSS u,g,r,i bands
-    //     let mut filtered = Spectrum::default();
-    //     filtered.from_existing(&self.input.get_curve(), 1.0);
-    //     filtered.invert_axis_spec(XAxis, NotNan::new(SPEED_OF_LIGHT).unwrap()); 
-    //     filtered.multiply(by_what);
-
-    //     let desired_sb = surface_brightness_ab2freq_radiance(mag);
-    //     let mean_sb = filtered.integral() / self.filter_equiv_bw;
-    //     self.input.scale_axis_factor(YAxis, desired_sb / mean_sb);
-    // }
-
-    // IT IS NECESSARY TO PREVIOUSLY USE "SET_FILTER"
+    /// Normalize the input spectrum to a given magnitude in the selected filter band. It is necessary to previously use "set_filter".
     pub fn normalize_to_filter_mag(&mut self, mag: f64) { // ONLY FOR WHEN FILTER -> COUSINS_R IS SELECTED
         let mut filtered = Spectrum::default();
         filtered.from_existing(&self.input.get_curve(), 1.0);
@@ -373,6 +403,7 @@ impl Simulation {
         self.input.scale_axis_factor(YAxis, desired_sb / mean_sb);
     }
 
+    /// Set the simulation parameters and update the sky spectrum and detector configuration accordingly.
     pub fn set_params(&mut self, params: SimulationParams) {
         self.params = params.clone();
 
@@ -392,18 +423,9 @@ impl Simulation {
         self.det.set_exposure_time(params.dit * params.ndit as f64)
     }
 
+    /// Run the simulation for the specified instrument arm (blue or red).
     pub fn simulate_arm(&mut self, arm: InstrumentArm) { 
         let tarsis_prop: &mut InstrumentProperties = self.tarsis_model.properties_mut();
-        // let mut det_name: &str;
-
-        // match arm {
-        //     InstrumentArm::BlueArm => {
-        //         det_name = &self.params.blue_detector;
-        //     }
-        //     InstrumentArm::RedArm => {
-        //         det_name = &self.params.red_detector;
-        //     }
-        // }
 
         // Set coating
         *tarsis_prop.get_coating_mut() = self.det.get_spec().get_coating().clone();
@@ -415,6 +437,7 @@ impl Simulation {
         self.det.set_pixel_photon_flux(flux_obj, flux_sky);      
     }
 
+    /// Get the read-out noise of the detector.
     pub fn read_out_noise(&self) -> f64 {
         let spec = self.det.get_spec();
         if spec == DetectorSpec::default() {
@@ -424,6 +447,7 @@ impl Simulation {
         return self.det.read_out_noise();
     }
 
+    /// Get the gain of the detector.
     pub fn gain(&self) -> f64 {
         let spec = self.det.get_spec();
         if spec == DetectorSpec::default() {
@@ -433,28 +457,33 @@ impl Simulation {
         return *spec.get_gain();
     }
 
+    /// Convert pixel position to wavelength using the instrument model.
     pub fn px_to_wavelength(&mut self, arm: InstrumentArm, px: NotNan<f64>) -> f64 {
         return self.tarsis_model.px_to_wavelength_val(arm, self.params.slice, px).unwrap();
     }
 
+    /// Convert wavelength to pixel position using the instrument model.
     pub fn wl_to_pixel_curve(&mut self, arm: InstrumentArm) -> Curve {
         return self.tarsis_model.wavelength_to_pix_crv(arm, self.params.slice).unwrap();
     }
 
+    /// Get the signal value at a given wavelength.
     pub fn signal(self, wl: NotNan<f64>) -> f64 {
         return self.det.signal_value(wl);
     }
 
+    /// Get the noise value at a given wavelength.
     pub fn noise(self, wl: NotNan<f64>) -> f64 {
         return self.det.noise_value(wl);
     }
 
+    /// Get the number of electrons at a given wavelength.
     pub fn electrons(self, wl: NotNan<f64>) -> f64 {
         return self.det.electrons_value(wl);
 
     }
 
-    // Returns DIT or NDIT depending in what the user providad (first element of the touple), as well as INT (=DIT*NDIT) (second element of the touple)
+    /// Returns DIT or NDIT depending in what the user providad (first element of the touple), as well as INT (=DIT*NDIT) (second element of the touple)
     pub fn texp_from_snr(&mut self, snr: f64, lambda_ref: NotNan<f64>) -> f64 {//, input: f64) -> (f64, f64) { // CHECK, ITS WRONG
 
         let inv_gain = 1.0 / self.det.get_detector().get_gain();
@@ -472,8 +501,8 @@ impl Simulation {
         //return (t / input, t);
     }
 
+    /// Calculate the limiting magnitude for a given wavelength and instrument arm.
     pub fn lim_mag(&mut self, lambda_ref: NotNan<f64>, arm: InstrumentArm) -> f64 { 
-        //let px = self.tarsis_model.wavelength_to_px_val(arm, self.params.slice, lambda_ref).unwrap();
         // Total throughput: sky extinction + instrument transmission (telescope + instrument + QE) (CONSIDERED QE ADDED INTO THE TRANSMISSION CURVE)
         let ext_frac = mag2frac(self.get_sky_model().get_sky_ext().get_point(lambda_ref) * self.get_sky_model().get_airmass());
         let trans_tot: f64;
@@ -518,11 +547,12 @@ impl Simulation {
         return mag_lim;
     }
 
+    /// Calculate the limiting flux for a given wavelength and instrument arm.
     pub fn lim_flux(&mut self, lambda_ref: NotNan<f64>, arm: InstrumentArm) -> f64 {  // IN  W·m⁻²·m⁻¹
         // Total throughput: sky extinction + instrument transmission (telescope + instrument + QE) (CONSIDERED QE ADDED INTO THE TRANSMISSION CURVE)
         let ext_frac = mag2frac(self.get_sky_model().get_sky_ext().get_point(lambda_ref) * self.get_sky_model().get_airmass());
         let trans_tot: f64;
-        match arm { // THIS IS CONSIDERING THE QE IS ADDED INTO THE TRANSMISSION CURVE
+        match arm { // These calculations consider that the QE is added into the transmission curve
             InstrumentArm::RedArm => {
                 trans_tot = self.get_tarsis_model().get_red_ml15().get_point(lambda_ref);
             },
@@ -562,11 +592,11 @@ impl Simulation {
         return flux_lim;
     }
 
+    /// Calculate the radial velocity uncertainty for a given instrument arm and object size.
     pub fn rad_vel_unc(&mut self, arm: InstrumentArm, obj_size: f64) -> f64 { // change the object size specification when the spatial distribution is implemented
         // only works if the input is an emission/absorption line generated with "set_input_line"
         let tot: f64 = self.det.signal_crv().get_curve().get_map().values().sum();
         let line_cntr = self.det.signal_crv().get_curve().get_map().iter().map(|(x, v)| x.into_inner() * (v / tot)).sum();
-        //println!("line cnt: {}", line_cntr);
         let res_in_wl: f64;
         match arm {
             InstrumentArm::BlueArm => {
@@ -578,7 +608,6 @@ impl Simulation {
                 res_in_wl = self.get_tarsis_model().get_red_px2w()[self.params.slice].get_point(NotNan::new(res_in_px).expect("x should not be NaN")) - self.get_tarsis_model().get_red_px2w()[self.params.slice].get_point(NotNan::new(0.0).expect("x should not be NaN"));
             }
         }
-        //println!("RES: {}", res_in_wl);
 
         let mut w : Vec<f64> = Vec::new();
         let mut a_0 : Vec<f64> = Vec::new();
@@ -603,14 +632,16 @@ impl Simulation {
     // SPATIAL FLUX DISTRIBUTION
 
     // ¡¡¡¡¡¡ Do a correct scaling so that the grid multipy the flux at each pixel so that is the correct percentage of the galaxy total flux (integrate the spectral template?)!!!
-    // I found that i must multiply each value of the mask by the inverse of the summation of all values of the mask
+    // I found that I must multiply each value of the mask by the inverse of the summation of all values of the mask
 
+    /// Generate an infinite (uniform) spatial profile.
     fn infinite_profile(self) -> Vec<Vec<f64>> {
         let value = 1.0 / (GRID_SIZE * GRID_SIZE) as f64;
         let grid = vec![vec![value; GRID_SIZE]; GRID_SIZE];
         return grid;
     }
 
+    /// Generate a uniform spatial profile within a specified radius.
     fn uniform_profile(self, center: f64, radius: f64) -> Vec<Vec<f64>> {
         let mut grid = vec![vec![0.0; GRID_SIZE]; GRID_SIZE]; 
         let mut total = 0.0;
@@ -635,6 +666,7 @@ impl Simulation {
         return grid;
     }
 
+    /// Generate a Sersic spatial profile with specified effective radius and Sersic index.
     fn sersic_profile(self, center: f64, r_e: f64, n: f64) -> Vec<Vec<f64>> {
         let mut grid = vec![vec![0.0; GRID_SIZE]; GRID_SIZE]; 
         let b_n = 2.0 * n - (1.0 / 3.0) + (4.0 / (405.0 * n)) + (46.0 / (25515.0 * n.powf(2.0))); // Approximation
@@ -656,6 +688,7 @@ impl Simulation {
         return grid;
     }
 
+    /// Generate a exponential spatial profile with a specified center and effective radius.
     fn exponential_profile(self, center: f64, r_e: f64) -> Vec<Vec<f64>> {
         let mut grid = vec![vec![0.0; GRID_SIZE]; GRID_SIZE]; 
         //let b_n = 2.0 * n - (1.0 / 3.0); // Approximation for b_n only for n > 8.
@@ -677,6 +710,7 @@ impl Simulation {
         return grid;
     }
 
+    /// Generate a gaussian spatial profile with a specified center and standard deviation.
     fn gaussian_profile(self, center: f64, sigma: f64) -> Vec<Vec<f64>> {
         let mut grid = vec![vec![0.0; GRID_SIZE]; GRID_SIZE];
         for y in 0..GRID_SIZE {
@@ -697,17 +731,10 @@ impl Simulation {
         return grid;
     }
 
-    fn point_source(self, x0: usize, y0: usize) -> Vec<Vec<f64>> {
-        let mut grid = vec![vec![0.0; GRID_SIZE]; GRID_SIZE]; 
-        for y in 0..GRID_SIZE {
-            for x in 0..GRID_SIZE {
-                if x == x0 && y == y0 {
-                    grid[y][x] = 1.0;
-                } else {
-                    grid[y][x] = 0.0;
-                }
-            }
-        }
+    /// Generate a point source mask.
+    fn point_source(self) -> Vec<Vec<f64>> {
+        let value = 1.0;
+        let grid = vec![vec![value; GRID_SIZE]; GRID_SIZE];
         return grid;
     }
 }

@@ -19,215 +19,215 @@ pub struct Cli {
 pub enum Commands {
     /// Computation of the SNR
     Snr {
-        /// 
+        /// Index of the slice used for the simulation.
         #[arg(long)]
         slice: usize,
-        ///
+        /// Pixel position within the selected slice.
         #[arg(long)]
         pixpos: usize,
-        ///
+        /// Airmass during the observation.
         #[arg(long, default_value_t = 1.0)]
         airmass: f64,
-        ///
+        /// Illuminated fraction of the Moon (0.0–100.0).
         #[arg(long, default_value_t = 0.0)]
         moon: f64,
-        ///
+        /// Number of exposures.
         #[arg(long)]
         ndit: i32,
-        ///
+        /// Time per exposure.
         #[arg(long)]
         dit: f64,
-        ///
-        #[arg(long)]
+        /// CCD detector model, must be "ccd231_84_0_s77" or "ccd231_84_0_h69".
+        #[arg(long, default_value_t = String::from("ccd231_84_0_s77"))]
         det: String,
-        ///
-        #[arg(long)]
+        /// Spectrograph arm, must be "blue" or "red" (default: "blue").
+        #[arg(long, default_value_t = String::from("blue"))]
         arm: String,
-        ///
+        /// Photometric filter used for normalization.
         #[arg(long, default_value_t = String::from("Rc"))]
         filter: String,
-        ///
+        /// Target magnitude in the selected filter for the normalization.
         #[arg(long, default_value_t = 18.0)]
         mag: f64
     },
     /// Computaton of the exposure time
     TExp {
-        ///
+        /// Index of the slice used for the simulation.
         #[arg(long)]
         slice: usize,
-        ///
+        /// Pixel position within the selected slice.
         #[arg(long)]
         pixpos: usize,
-        ///
+        /// Airmass during the observation.
         #[arg(long, default_value_t = 1.0)]
         airmass: f64,
-        ///
+        /// Illuminated fraction of the Moon.
         #[arg(long, default_value_t = 0.0)]
         moon: f64,
-        ///
+        /// Number of exposures.
         #[arg(long)]
         ndit: i32,
-        ///
+        /// Time per exposure.
         #[arg(long)]
         dit: f64,
-        ///
-        #[arg(long)]
+        /// CCD detector model, must be "ccd231_84_0_s77" or "ccd231_84_0_h69".
+        #[arg(long, default_value_t = String::from("ccd231_84_0_s77"))]
         det: String,
-        ///
-        #[arg(long)]
+        /// Spectrograph arm, must be "blue" or "red".
+        #[arg(long, default_value_t = String::from("blue"))]
         arm: String,
-        ///
+        /// Target SNR to be achieved for the calculation of the exposure time.
         #[arg(long)]
         snr: f64,
-        ///
+        /// Wavelength of reference to make the calculations of the expected exposure time.
         #[arg(long)]
         lambda_ref: f64,
-        ///
+        /// Photometric filter used for normalization.
         #[arg(long, default_value_t = String::from("Rc"))]
         filter: String,
-        ///
+        /// Target magnitude in the selected filter for the normalization.
         #[arg(long, default_value_t = 18.0)]
         mag: f64
         
     },
     /// Computation of the limiting magnitude
-    MagLim {
-        ///
+    LimMag {
+        /// Index of the slice used for the simulation.
         #[arg(long)]
         slice: usize,
-        ///
+        /// Pixel position within the selected slice.
         #[arg(long)]
         pixpos: usize,
-        ///
+        /// Airmass during the observation.
         #[arg(long, default_value_t = 1.0)]
         airmass: f64,
-        ///
+        /// Illuminated fraction of the Moon.
         #[arg(long, default_value_t = 0.0)]
         moon: f64,
-        ///
+        /// Number of exposures.
         #[arg(long)]
         ndit: i32,
-        ///
+        /// Time per exposure.
         #[arg(long)]
         dit: f64,
-        ///
-        #[arg(long)]
+        /// CCD detector model, must be "ccd231_84_0_s77" or "ccd231_84_0_h69".
+        #[arg(long, default_value_t = String::from("ccd231_84_0_s77"))]
         det: String,
-        ///
-        #[arg(long)]
+        /// Spectrograph arm, must be "blue" or "red" (default: "blue").
+        #[arg(long, default_value_t = String::from("blue"))]
         arm: String,
-        ///
+        /// Wavelength of reference to make the calculations of the limiting magnitude.
         #[arg(long)]
         lambda_ref: f64,
-        ///
+        /// Photometric filter used for normalization.
         #[arg(long, default_value_t = String::from("Rc"))]
         filter: String,
-        ///
+        /// Target magnitude in the selected filter for the normalization.
         #[arg(long, default_value_t = 18.0)]
         mag: f64
     },
     /// Computation of the limiting flux
-    FluxLim {
-        ///
+    LimFlux {
+        /// Index of the slice used for the simulation.
         #[arg(long)]
         slice: usize,
-        ///
+        /// Pixel position within the selected slice.
         #[arg(long)]
         pixpos: usize,
-        ///
+        /// Airmass during the observation.
         #[arg(long, default_value_t = 1.0)]
         airmass: f64,
-        ///
+        /// Illuminated fraction of the Moon.
         #[arg(long, default_value_t = 0.0)]
         moon: f64,
-        ///
+        /// Number of exposures.
         #[arg(long)]
         ndit: i32,
-        ///
+        /// Time per exposure.
         #[arg(long)]
         dit: f64,
-        ///
-        #[arg(long)]
+        /// CCD detector model, must be "ccd231_84_0_s77" or "ccd231_84_0_h69".
+        #[arg(long, default_value_t = String::from("ccd231_84_0_s77"))]
         det: String,
-        ///
-        #[arg(long)]
+        /// Spectrograph arm, must be "blue" or "red".
+        #[arg(long, default_value_t = String::from("blue"))]
         arm: String,
-        ///
+        /// Wavelength of reference to make the calculations of the limiting flux.
         #[arg(long)]
         lambda_ref: f64,
-        ///
+        /// Photometric filter used for normalization.
         #[arg(long, default_value_t = String::from("Rc"))]
         filter: String,
-        ///
+        /// Target magnitude in the selected filter for the normalization.
         #[arg(long, default_value_t = 18.0)]
         mag: f64
     },
     /// Computation of the uncertainty in the radial velocity
     RadVelUnc {
-        ///
+        /// Index of the slice used for the simulation.
         #[arg(long)]
         slice: usize,
-        ///
+        /// Pixel position within the selected slice.
         #[arg(long)]
         pixpos: usize,
-        ///
+        /// Airmass during the observation.
         #[arg(long, default_value_t = 1.0)]
         airmass: f64,
-        ///
+        /// Illuminated fraction of the Moon.
         #[arg(long, default_value_t = 0.0)]
         moon: f64,
-        ///
+        /// Number of exposures.
         #[arg(long)]
         ndit: i32,
-        ///
+        /// Time per exposure.
         #[arg(long)]
         dit: f64,
-        ///
-        #[arg(long)]
+        /// CCD detector model, must be "ccd231_84_0_s77" or "ccd231_84_0_h69".
+        #[arg(long, default_value_t = String::from("ccd231_84_0_s77"))]
         det: String,
-        ///
-        #[arg(long)]
+        /// Spectrograph arm, must be "blue" or "red" (default: "blue").
+        #[arg(long, default_value_t = String::from("blue"))]
         arm: String,
-        ///
+        /// Wavelength of reference to make the calculations of the uncertainty in the radial velocity.
         #[arg(long)]
         obj_size: f64,
-        ///
+        /// Photometric filter used for normalization.
         #[arg(long, default_value_t = String::from("Rc"))]
         filter: String,
-        ///
+        /// Target magnitude in the selected filter for the normalization.
         #[arg(long, default_value_t = 18.0)]
         mag: f64
     },
     /// Simulation of the detected counts
     CountSimul {
-        ///
+        /// Index of the slice used for the simulation.
         #[arg(long)]
         slice: usize,
-        ///
+        /// Pixel position within the selected slice.
         #[arg(long)]
         pixpos: usize,
-        ///
+        /// Airmass during the observation (default: 1.0).
         #[arg(long, default_value_t = 1.0)]
         airmass: f64,
-        ///
+        /// Illuminated fraction of the Moon (0.0–100.0, default: 0.0).
         #[arg(long, default_value_t = 0.0)]
         moon: f64,
-        ///
+        /// Number of exposures.
         #[arg(long)]
         ndit: i32,
-        ///
+        /// Time per exposure.
         #[arg(long)]
         dit: f64,
-        ///
-        #[arg(long)]
+        /// CCD detector model, must be "ccd231_84_0_s77" or "ccd231_84_0_h69".
+        #[arg(long, default_value_t = String::from("ccd231_84_0_s77"))]
         det: String,
-        ///
-        #[arg(long)]
+        /// Spectrograph arm, must be "blue" or "red" (default: "blue").
+        #[arg(long, default_value_t = String::from("blue"))]
         arm: String,
-        /// 
+        /// Photometric filter used for normalization.
         #[arg(long, default_value_t = String::from("Rc"))]
         filter: String,
-        ///
+        /// Target magnitude in the selected filter for the normalization.
         #[arg(long, default_value_t = 18.0)]
         mag: f64
     },
@@ -294,10 +294,10 @@ pub struct SpatialDistrArgs {
     /// Sigma of the gaussian profile?
     #[arg(long)]
     pub sigma: Option<f64>,
-    /// X coordinates of the point emission
-    #[arg(long)]
-    pub x0: Option<usize>,
-    /// Y coordinates of the point emission
-    #[arg(long)]
-    pub y0: Option<usize>,
+    // /// X coordinates of the point emission
+    // #[arg(long)]
+    // pub x0: Option<usize>,
+    // /// Y coordinates of the point emission
+    // #[arg(long)]
+    // pub y0: Option<usize>,
 }

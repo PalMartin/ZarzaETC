@@ -2,16 +2,9 @@ mod cli;
 
 use clap::Parser;
 use ordered_float::NotNan;
-use rand_distr::uniform;
-use rand_distr::Uniform;
-use zarza_etc::calculation_worker::CalculationProduct;
-use zarza_etc::detector::*;
 use zarza_etc::curve::*;
-use zarza_etc::curve::CurveAxis::*;
-use zarza_etc::spectrum::*;
 use zarza_etc::simulation::*;
 use zarza_etc::instrument_model::*;
-use zarza_etc::helpers::*;
 use zarza_etc::instrument_model::InstrumentArm::RedArm;
 use zarza_etc::instrument_model::InstrumentArm::BlueArm;
 use zarza_etc::calculation_worker::*;
@@ -74,6 +67,9 @@ fn spatial_flux_distr(simul: &mut Simulation, pixel_position: usize) {
                 "infinite" => {
                     simul.set_spatial_distribution(SpatialDistribution::Infinite, pixel_position);
                 }
+                "point" => {
+                    simul.set_spatial_distribution(SpatialDistribution::Point, pixel_position);
+                }
                 "uniform" => {
                     simul.set_spatial_distribution(
                         SpatialDistribution::Uniform { 
@@ -102,13 +98,13 @@ fn spatial_flux_distr(simul: &mut Simulation, pixel_position: usize) {
                         sigma: cli.spdtr.sigma.expect("Missing --sigma")
                     }, pixel_position);
                 }
-                "point" => {
-                    simul.set_spatial_distribution(
-                        SpatialDistribution::Point { 
-                            x0: cli.spdtr.x0.expect("Missing --x0"), 
-                            y0: cli.spdtr.y0 .expect("Missing --y0")
-                        }, pixel_position);
-                }
+                // "point" => {
+                //     simul.set_spatial_distribution(
+                //         SpatialDistribution::Point { 
+                //             x0: cli.spdtr.x0.expect("Missing --x0"), 
+                //             y0: cli.spdtr.y0 .expect("Missing --y0")
+                //         }, pixel_position);
+                // }
                 _ => panic!("Unknown input type. Must be 'infinite', 'uniform', 'sersic', 'exponential', 'gaussian' or 'point'."),
             }
 }
@@ -220,10 +216,10 @@ fn main() {
                 eprint!("Unknown arm. Must be 'red' or 'blue'.")
             }
 
-            let exposure_time = simul.texp_from_snr(snr, NotNan::new(lambda_ref).expect("x should not be NaN"));
-            println!("The exposure time necessary to achieve a SNR of {:.3} at a wavelength of {:.3}[nm] is: {:.3}[s].", snr, lambda_ref * 1e9, exposure_time);
+            let exposure_time = simul.texp_from_snr(snr, NotNan::new(lambda_ref * 1e-10).expect("x should not be NaN"));
+            println!("The exposure time necessary to achieve a SNR of {:.3} at a wavelength of {:.3}[Å] is: {:.3}[s].", snr, lambda_ref, exposure_time);
         }
-        Commands::MagLim { slice, pixpos, airmass, moon, ndit, dit, det, arm, lambda_ref, filter, mag } => {
+        Commands::LimMag { slice, pixpos, airmass, moon, ndit, dit, det, arm, lambda_ref, filter, mag } => {
 
             // Make simulation
             let mut simul = make_simulation(slice, pixpos, airmass, moon, ndit, dit, det, arm.clone(), &filter, mag);
@@ -231,18 +227,18 @@ fn main() {
             let lim_mag: f64;
             if arm == "red" {
                 simul.simulate_arm(RedArm);
-                lim_mag = simul.lim_mag(NotNan::new(lambda_ref).expect("x should not be NaN"), RedArm);
+                lim_mag = simul.lim_mag(NotNan::new(lambda_ref * 1e-10).expect("x should not be NaN"), RedArm);
             } else if arm == "blue" {
                 simul.simulate_arm(BlueArm);
-                lim_mag = simul.lim_mag(NotNan::new(lambda_ref).expect("x should not be NaN"), BlueArm);
+                lim_mag = simul.lim_mag(NotNan::new(lambda_ref * 1e-10).expect("x should not be NaN"), BlueArm);
             } else {
                 eprint!("Unknown arm. Must be 'red' or 'blue'.");
                 lim_mag = 0.0;
             }
 
-            println!("The limiting magnitude at a wavelength of {:.3}[nm] for an exposure time of {:.3}[s] is: {:.3}", lambda_ref * 1e9, *simul.get_params().get_ndit() as f64 * simul.get_params().get_dit(), lim_mag);
+            println!("The limiting magnitude at a wavelength of {:.3}[Å] for an exposure time of {:.3}[s] is: {:.3}", lambda_ref, *simul.get_params().get_ndit() as f64 * simul.get_params().get_dit(), lim_mag);
         } 
-        Commands::FluxLim { slice, pixpos, airmass, moon, ndit, dit, det, arm, lambda_ref, filter, mag } => {
+        Commands::LimFlux { slice, pixpos, airmass, moon, ndit, dit, det, arm, lambda_ref, filter, mag } => {
 
             // Make simulation
             let mut simul = make_simulation(slice, pixpos, airmass, moon, ndit, dit, det, arm.clone(), &filter, mag);
@@ -250,16 +246,16 @@ fn main() {
             let lim_flux: f64;
             if arm == "red" {
                 simul.simulate_arm(RedArm);
-                lim_flux = simul.lim_flux(NotNan::new(lambda_ref).expect("x should not be NaN"), RedArm);
+                lim_flux = simul.lim_flux(NotNan::new(lambda_ref * 1e-10).expect("x should not be NaN"), RedArm);
             } else if arm == "blue" {
                 simul.simulate_arm(BlueArm);
-                lim_flux = simul.lim_flux(NotNan::new(lambda_ref).expect("x should not be NaN"), BlueArm);
+                lim_flux = simul.lim_flux(NotNan::new(lambda_ref * 1e-10).expect("x should not be NaN"), BlueArm);
             } else {
                 eprint!("Unknown arm. Must be 'red' or 'blue'.");
                 lim_flux = 0.0;
             }
 
-            println!("The limiting flux at a wavelength of {:.3}[nm] for an exposure time of {:.3}[s] is: {:.3}", lambda_ref * 1e9, *simul.get_params().get_ndit() as f64 * simul.get_params().get_dit(), lim_flux);
+            println!("The limiting flux at a wavelength of {:.3}[Å] for an exposure time of {:.3}[s] is: {:.3}", lambda_ref, *simul.get_params().get_ndit() as f64 * simul.get_params().get_dit(), lim_flux);
         }
         Commands::RadVelUnc { slice, pixpos, airmass, moon, ndit, dit, det, arm, obj_size, filter, mag } => {
 
