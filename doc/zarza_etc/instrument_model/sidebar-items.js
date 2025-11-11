@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["CAHA_APERTURE_AREA","CAHA_APERTURE_DIAMETER","CAHA_EFFECTIVE_AREA","CAHA_FOCAL_LENGTH","SPECTRAL_PIXEL_LENGTH","TARSIS_SLICES"],"enum":["InstrumentArm"],"struct":["InstrumentModel","InstrumentProperties"]};

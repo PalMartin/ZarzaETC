@@ -188,7 +188,7 @@ pub enum Commands {
         /// Spectrograph arm, must be "blue" or "red" (default: "blue").
         #[arg(long, default_value_t = String::from("blue"))]
         arm: String,
-        /// Wavelength of reference to make the calculations of the uncertainty in the radial velocity.
+        /// Size of the object in the detector to make the calculations of the uncertainty in the radial velocity.
         #[arg(long)]
         obj_size: f64,
         /// Photometric filter used for normalization.

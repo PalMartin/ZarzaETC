@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["GRID_SIZE"],"enum":["SpatialDistribution"],"struct":["Simulation","SimulationParams"]};

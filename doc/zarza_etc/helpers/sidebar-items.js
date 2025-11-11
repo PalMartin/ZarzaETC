@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["AB_ZEROPOINT","ARCSEC","INVSQRT2PI","JANSKY","PLANCK_CONSTANT","SPEED_OF_LIGHT","STD2FWHM"],"fn":["mag2frac","surface_brightness_ab2freq_radiance","surface_brightness_ab2radiance","surface_brightness_vega2radiance"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"macro":["assert_f32_eq","assert_f64_eq"],"mod":["calculation_worker","config_manager","curve","data_file_manager","detector","helpers","instrument_model","simulation","sky_model","spectrum","tests"]};

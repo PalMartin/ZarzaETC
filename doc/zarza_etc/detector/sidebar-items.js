@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["DETECTOR_PIXELS","DETECTOR_TEMPERATURE"],"struct":["Detector","DetectorProperties","DetectorSpec"]};
