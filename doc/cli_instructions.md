@@ -108,9 +108,10 @@ Computes the exposure time required to achieve a given SNR. Returns the result i
 | ---------------- | ---------------------------------------- |
 | `--slice <INT>`  | Index of the slice used for the simulation      |
 | `--pixpos <INT>` | Pixel position within the selected slice           |
-| `--snr <FLOAT>` | Target SNR to be achieved for the calculation of the exposure time |
+| `--ndit <INT>`   | Number of exposures                      |
+| `--dit <FLOAT>`  | Time per exposure      |
 | `--lambda-ref <FLOAT>` | Wavelength of reference to make the calculations of the expected exposure time |
-
+
 **Optional parameters:**
 
 | Parameter           | Description                              |
@@ -251,7 +252,7 @@ Simulation of the detected counts by the instrument. The ressults of the simulat
 **Example:**
 
 ```bash
-
+zarza_etc --spectral "line" --spatial "infinite" --lambda 6563 --flux 12.0e-14 --fwhm 0.10 --continuum 2.8e-14 --line-type "emission_line" --resolution "resolved"  --lambda-min 6000 --lambda-max 7000 count-simul --slice 20 --pixpos 20 --ndit 3 --dit 3600.0
 ```
 
 ### `--help`         
