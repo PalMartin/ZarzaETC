@@ -143,7 +143,7 @@ Computation of the limiting magnitude detectable by the instrument for an observ
 | `--pixpos <INT>` | Pixel position within the selected slice           |
 | `--ndit <INT>`   | Number of exposures                      |
 | `--dit <FLOAT>`  | Time per exposure      |
-| `--lambda-ref <FLOAT>` | Wavelength of reference to make the calculations of the expected exposure time |
+| `--lambda-ref <FLOAT>` | Wavelength of reference to make the calculations of the limiting magnitude |
 
 **Optional parameters:**
 
@@ -174,7 +174,7 @@ Computation of the limiting flux detectable by the instrument for an observation
 | `--pixpos <INT>` | Pixel position within the selected slice           |
 | `--ndit <INT>`   | Number of exposures                      |
 | `--dit <FLOAT>`  | Time per exposure      |
-| `--lambda-ref <FLOAT>` | Wavelength of reference to make the calculations of the expected exposure time |
+| `--lambda-ref <FLOAT>` | Wavelength of reference to make the calculations of the limiting flux |
 
 **Optional parameters:**
 
