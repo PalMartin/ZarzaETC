@@ -20,7 +20,7 @@ These two options must be provided for every command:
 
 The available spectral distributions are the following, and depending on the spectral model selected, extra parameters may be required.
 
-| Spatial Profile                  | Options                      |
+| Spatial Profile                  | Parameters                      |
 | ------------------------------ | ---------------------------- |
 | `template` | `--temp` |
 | `line` |  `--lambda`, `--flux`,  `--fwhm`, `--continuum`, `--line-type`, `--resolution`, `--lambda-min`, `--lambda-max`|
@@ -30,23 +30,23 @@ Optional parameters:
 
 | Parameter     | Description                          |
 | ---------- | ------------------------------------ |
-| `--temp` | For "template" mode: Name of the template to be used       |
-| `--lambda` | For "line" mode: Central wavelength of the line. Must be in Angstrom |
-| `--flux`    | For "line" mode: Peak flux of the line. Must be in cgs units   |
-| `--fwhm`      | For "line" mode: FWHM of the line. Must be in Angstrom                        |
-| `--continuum`  | For "line" mode: Flux of the continuum         |
-| `--line-type`  | For "line" mode: Type of line, `emission` or `absorption                     |
-| `--resolution`  | For "line" mode: Specify `resolved` or `unresolved line    |
-| `--lambda-min`  | For "line" mode: Minimum wavelength of the wavelength window to generate de line. Must be in Angstrom                       |
-| `--lambda-max`  | For "line" mode: Maximum wavelength of the wavelength window to generate de line. Must be in Angstrom                 |
-| `--file`  | Gaussian sigma                       |
+| `--temp <STRING>` | For "template" mode: Name of the template to be used       |
+| `--lambda  <FLOAT>` | For "line" mode: Central wavelength of the line. Must be in Angstrom |
+| `--flux <FLOAT>`    | For "line" mode: Peak flux of the line. Must be in cgs units   |
+| `--fwhm <FLOAT>`      | For "line" mode: FWHM of the line. Must be in Angstrom                        |
+| `--continuum <FLOAT>`  | For "line" mode: Flux of the continuum         |
+| `--line-type <STRING>`  | For "line" mode: Type of line, `emission` or `absorption                     |
+| `--resolution <STRING>`  | For "line" mode: Specify `resolved` or `unresolved line    |
+| `--lambda-min <FLOAT>`  | For "line" mode: Minimum wavelength of the wavelength window to generate de line. Must be in Angstrom                       |
+| `--lambda-max <FLOAT>`  | For "line" mode: Maximum wavelength of the wavelength window to generate de line. Must be in Angstrom                 |
+| `--file <STRING>`  | Gaussian sigma                       |
 
 
 ## Spatial Profile Configuration ('--spatial')
 
 The available spatial profiles are the following, and depending on the spatial model selected, extra parameters may be required.
 
-| Spatial Profile                  | Options                      |
+| Spatial Profile                  | Parameters                      |
 | ------------------------------ | ---------------------------- |
 | `infinite` | *(No additional parameters)* |
 | `uniform` |  `--center`, `--radius` |
@@ -59,11 +59,11 @@ Optional parameters:
 
 | Parameter     | Description                          |
 | ---------- | ------------------------------------ |
-| `--center` | Center of emission                   |
-| `--radius` | Radius of emission (for exponential) |
-| `--r-e`    | Effective radius (Sérsic profile and Exponential profile)    |
-| `--n`      | Sérsic index                         |
-| `--sigma`  | Gaussian sigma                       |
+| `--center <FLOAT>` | Center of emission                   |
+| `--radius <FLOAT>` | Radius of emission (for exponential) |
+| `--r-e <FLOAT>`    | Effective radius (Sérsic profile and Exponential profile)    |
+| `--n <FLOAT>`      | Sérsic index                         |
+| `--sigma <FLOAT>`  | Gaussian sigma                       |
 
 ## Available Commands
 
@@ -189,7 +189,7 @@ Computation of the limiting flux detectable by the instrument for an observation
 **Example:**
 
 ```bash
-
+--spectral "line" --spatial "infinite" --lambda 6563 --flux 12.0e-14 --fwhm 0.10 --continuum 2.8e-14 --line-type "emission_line" --resolution "resolved"  --lambda-min 6000 --lambda-max 7000 lim-flux --slice 20 --pixpos 20 --ndit 3 --dit 3600.0 --det "ccd231_84_0_h69" --arm "red" --mag 22.0 --filter "Rc" --airmass 1.2 --moon 50.0 --lambda-ref 6563
 ```
 
 ### `rad-vel-unc`  — Radial Velocity Uncertainty
@@ -204,7 +204,7 @@ Computation of the uncertainty in the radial velocity expected of the detector f
 | `--pixpos <INT>` | Pixel position within the selected slice           |
 | `--ndit <INT>`   | Number of exposures                      |
 | `--dit <FLOAT>`  | Time per exposure      |
-| `--obj-size <FLOAT>` | Size of the object on he detector to make the calculations of the uncertainty in the radial velocity |
+| `--obj-size <FLOAT>` | Size (in pixels) of the object on the detector to make the calculations of the uncertainty in the radial velocity |
  
  **Optional parameters:**
  
@@ -221,7 +221,7 @@ Computation of the uncertainty in the radial velocity expected of the detector f
  **Example:**
  
  ```bash
-
+zarza_etc --spectral "line" --spatial "infinite" --lambda 6563 --flux 12.0e-14 --fwhm 0.10 --continuum 2.8e-14 --line-type "emission_line" --resolution "resolved"  --lambda-min 6000 --lambda-max 7000 rad-vel-unc --slice 20 --pixpos 20 --ndit 3 --dit 3600.0 --det "ccd231_84_0_h69" --arm "red" --mag 22.0 --filter "Rc" --airmass 1.2 --moon 50.0 --obj-size 2
 ```
  
 ### `count-simul`  — Simulated Counts 
@@ -254,7 +254,7 @@ Simulation of the detected counts by the instrument. The ressults of the simulat
 
 ```
 
-### help         
+### `--help`         
 
 Print this message or the help of the given subcommand(s).
 
